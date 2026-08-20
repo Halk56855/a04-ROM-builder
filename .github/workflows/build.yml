@@ -40,49 +40,47 @@ jobs:
 
       - name: Initialize and Sync AxionOS Android 16 Source (Shallow)
         run: |
-          mkdir -p ~/axion
-          cd ~/axion
-          # استخدام --depth=1 لتخفيض حجم السورس بشكل جذري
+          mkdir -p $GITHUB_WORKSPACE/axion
+          cd $GITHUB_WORKSPACE/axion
           repo init -u https://github.com/AxionAOSP/android -b lineage-23.2 --depth=1 --git-lfs
           repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune -j$(nproc --all)
 
       - name: Clone Device, Vendor, and Kernel Trees
         run: |
-          cd ~/axion
+          cd $GITHUB_WORKSPACE/axion
           git clone https://github.com/A04-Trees-and-ROMs/android_device_samsung_a04.git -b lineage-22.2 device/samsung/a04 --depth=1
           git clone https://github.com/A04-Trees-and-ROMs/android_vendor_samsung_a04.git -b lineage-22.2 vendor/samsung/a04 --depth=1
           git clone https://github.com/Halk56855/kernel_samsung_wingtech.git -b android-4.19-stable kernel/samsung/a04 --depth=1
 
       - name: Configure Ccache Limit
         run: |
-          export CCACHE_DIR=~/axion/.ccache
+          export CCACHE_DIR=$GITHUB_WORKSPACE/axion/.ccache
           ccache -M 10G
 
       - name: Set up Environment and Build ROM
         run: |
-          cd ~/axion
+          cd $GITHUB_WORKSPACE/axion
           source build/envsetup.sh
           lunch axion_a04-userdebug
           mka bacon -j$(nproc --all)
 
       - name: Cleanup Unnecessary Files to Save Space
         run: |
-          # حذف مجلدات الكاش والملفات المؤقتة الضخمة غير الضرورية بعد البناء
-          rm -rf ~/axion/.ccache
-          rm -rf ~/axion/out/target/product/a04/obj
+          rm -rf $GITHUB_WORKSPACE/axion/.ccache
+          rm -rf $GITHUB_WORKSPACE/axion/out/target/product/a04/obj
 
       - name: Upload to GitHub Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: AxionOS-Android16-A04-Build
-          path: ~/axion/out/target/product/a04/*.zip
+          path: ${{ github.workspace }}/axion/out/target/product/a04/*.zip
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "android16-${{ github.run_id }}"
           name: "AxionOS A04 Android 16 Build ${{ github.run_id }}"
-          files: ~/axion/out/target/product/a04/*.zip
+          files: ${{ github.workspace }}/axion/out/target/product/a04/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -91,7 +89,7 @@ jobs:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: "6899540935"
         run: |
-          ZIP_FILE=$(ls ~/axion/out/target/product/a04/*.zip)
+          ZIP_FILE=$(ls ${{ github.workspace }}/axion/out/target/product/a04/*.zip)
           
           echo "جاري رفع الروم إلى تليجرام..."
           curl -F "chat_id=$CHAT_ID" -F "document=@$ZIP_FILE" https://api.telegram.org/bot$BOT_TOKEN/sendDocument
