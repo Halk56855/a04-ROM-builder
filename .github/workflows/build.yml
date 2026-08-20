@@ -1,116 +1,94 @@
-name: Build Lightweight AxionOS Android 16 for Samsung A04
+name: Build AxionOS Android 16 for Samsung A04
 
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-22.04
-    permissions:
-      contents: write
-
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - name: Maximize Build Disk Space
+        uses: easimon/maximize-build-space@v10
+        with:
+          root-reserve-mb: 1024
+          swap-size-mb: 8192
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+          remove-docker-images: 'true'
 
-      # 1. تنظيف أقصى مساحة من القرص قبل التنزيل
-      - name: Free Maximum Disk Space
-        run: |
-          echo "=== المساحة المتاحة قبل التنظيف ==="
-          df -h
-          
-          # إزالة الحزم الافتراضية الثقيلة غير المستخدمة
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /usr/local/share/boost
-          sudo rm -rf /opt/hostedtoolcache
-          sudo rm -rf /usr/share/swift
-          sudo rm -rf /usr/local/graalvm
-          sudo rm -rf /usr/local/share/powershell
-          
-          # تنظيف حزم النظام وحاويات Docker
-          sudo apt-get clean
-          docker image prune -a -f -a
-          
-          echo "=== المساحة المتاحة بعد التنظيف ==="
-          df -h
-
-      # 2. تثبيت الحزم والأدوات الأساسية
-      - name: Set up Build Environment
+      - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            bc build-essential ccache curl flex g++-multilib gcc-multilib \
-            git git-lfs gnupg gperf lib32ncurses5-dev lib32z1-dev libgl1-mesa-dev \
-            libxml2-utils xsltproc zip zlib1g-dev python3 python3-pip
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32z1-dev libelf-dev liblz4-tool libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zip zlib1g-dev python3 python-is-python3
 
-      # 3. إعداد أداة Repo و Git
-      - name: Configure Git & Install Repo Tool
+      - name: Install Repo Tool
         run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
           mkdir -p ~/bin
           curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
           chmod a+x ~/bin/repo
           echo "$HOME/bin" >> $GITHUB_PATH
 
-      # 4. تهيئة سورس AxionOS (Lightweight Init)
-      - name: Initialize AxionOS Source
+      - name: Configure Git Identity
         run: |
-          mkdir -p android
-          cd android
-          repo init -u https://github.com/AxionAOSP/android.git -b lineage-23.2 --git-lfs --depth=1
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
 
-      # 5. إنشاء Manifest محلي واستبعاد المشاريع الثقيلة غير الضرورية
-      - name: Apply Minimal Local Manifest
+      - name: Initialize and Sync AxionOS Android 16 Source
         run: |
-          cd android
-          mkdir -p .repo/local_manifests
-          cat <<EOF > .repo/local_manifests/remove_bloat.xml
-          <?xml version="1.0" encoding="UTF-8"?>
-          <manifest>
-            <!-- إزالة اختبارات وتطبيقات السورس الضخمة -->
-            <remove-project name="platform/cts" />
-            <remove-project name="platform/sdk" />
-            <remove-project name="platform/developers/samples" />
-            <!-- إزالة تعريفات شريحة Qualcomm المرفقة مع السورس العام لأن A04 معالجه Mediatek -->
-            <remove-project name="LineageOS/android_hardware_qcom_display" />
-            <remove-project name="LineageOS/android_hardware_qcom_media" />
-          </manifest>
-          EOF
+          mkdir -p ~/axion
+          cd ~/axion
+          repo init -u https://github.com/AxionAOSP/android -b lineage-23.2 --git-lfs
+          repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune -j$(nproc --all)
 
-      # 6. تنزيل شجرة جهاز Samsung A04
-      - name: Clone Device Tree
+      - name: Clone Device, Vendor, and Kernel Trees
         run: |
-          cd android
-          git clone https://github.com/juanes10201/android_device_samsung_a04.git -b main device/samsung/a04 --depth=1
+          cd ~/axion
+          # 1. سحب تعريفات الجهاز
+          git clone https://github.com/A04-Trees-and-ROMs/android_device_samsung_a04.git -b lineage-22.2 device/samsung/a04
+          
+          # 2. سحب ملفات المورد (Vendor)
+          git clone https://github.com/A04-Trees-and-ROMs/android_vendor_samsung_a04.git -b lineage-22.2 vendor/samsung/a04
+          
+          # 3. سحب النواة (Kernel)
+          git clone https://github.com/Halk56855/kernel_samsung_wingtech.git -b android-4.19-stable kernel/samsung/a04
 
-      # 7. المزامنة الخفيفة السريعة (Minimal Sync)
-      - name: Minimal Repo Sync
+      - name: Set up Environment and Build ROM
         run: |
-          cd android
-          repo sync -c --no-clone-bundle --no-tags --current-branch --depth=1 -j$(nproc --all) --force-sync
-
-      # 8. بدء عملية التجميع الخفيفة (System Image Only)
-      - name: Build System Image
-        run: |
-          cd android
+          cd ~/axion
           source build/envsetup.sh
-          lunch axion_a04-userdebug || lunch lineage_a04-userdebug
-          mka systemimage -j$(nproc --all)
+          lunch axion_a04-userdebug
+          mka bacon -j$(nproc --all)
 
-      # 9. ضغط صورة النظام وتقليل حجمها للمخرج النهائي
-      - name: Compress Output
-        run: |
-          cd android/out/target/product/a04/
-          if [ -f "system.img" ]; then
-            zip -9 system_a04.zip system.img
-          fi
-
-      # 10. رفع ملف النظام الناتج
-      - name: Upload Build Artifact
+      - name: Upload to GitHub Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: AxionOS-Samsung-A04-SystemImage
-          path: android/out/target/product/a04/system_a04.zip
+          name: AxionOS-Android16-A04-Build
+          path: ~/axion/out/target/product/a04/*.zip
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "android16-${{ github.run_id }}"
+          name: "AxionOS A04 Android 16 Build ${{ github.run_id }}"
+          files: ~/axion/out/target/product/a04/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload to Telegram and GoFile
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: "6899540935"
+        run: |
+          ZIP_FILE=$(ls ~/axion/out/target/product/a04/*.zip)
+          
+          echo "جاري رفع الروم إلى تليجرام..."
+          curl -F "chat_id=$CHAT_ID" -F "document=@$ZIP_FILE" https://api.telegram.org/bot$BOT_TOKEN/sendDocument
+          
+          echo "جاري الرفع إلى GoFile..."
+          GOFILE_SERVER=$(curl -s https://api.gofile.io/servers | grep -o '"name":"[^"]*"' | head -n 1 | cut -d'"' -f4)
+          curl -F "file=@$ZIP_FILE" https://${GOFILE_SERVER}.gofile.io/contents/uploadfile
