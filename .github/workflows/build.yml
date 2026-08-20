@@ -21,6 +21,20 @@ jobs:
           remove-codeql: 'true'
           remove-docker-images: 'true'
 
+      - name: Redirect Apt Cache to Large Workspace
+        run: |
+          # إنشاء مجلدات البديلة في المساحة الكبيرة
+          sudo mkdir -p ${{ github.workspace }}/apt_cache/archives/partial
+          sudo mkdir -p ${{ github.workspace }}/apt_lists/partial
+          
+          # إعادة توجيه مجلد الحزم المؤقتة
+          sudo rm -rf /var/cache/apt/archives
+          sudo ln -s ${{ github.workspace }}/apt_cache/archives /var/cache/apt/archives
+          
+          # إعادة توجيه مجلد القوائم
+          sudo rm -rf /var/lib/apt/lists
+          sudo ln -s ${{ github.workspace }}/apt_lists /var/lib/apt/lists
+
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
