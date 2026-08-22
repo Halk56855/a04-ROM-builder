@@ -55,7 +55,7 @@ jobs:
       - name: Sync Source Tree
         run: |
           cd workspace
-          repo sync -c --no-clone-bundle --depth=1 --no-tags --force-sync -j$(nproc)
+          repo sync -c --no-clone-bundle --no-tags --force-sync -j$(nproc)
 
       - name: Start Compilation
         run: |
