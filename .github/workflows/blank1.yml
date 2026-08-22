@@ -37,7 +37,8 @@ jobs:
           cd workspace
           git config --global user.name "Your Name"
           git config --global user.email "your-email@example.com"
-          repo init -u https://github.com/LineageOS/android.git -b lineage-23.2 --git-lfs --depth=1
+          # تم إزالة --depth=1 لتجنب أخطاء شجرة العمل
+          repo init -u https://github.com/LineageOS/android.git -b lineage-23.2 --git-lfs
 
       - name: Setup Local Manifests
         run: |
