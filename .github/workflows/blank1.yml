@@ -1,4 +1,4 @@
-name: Build LineageOS for Galaxy A04
+name: Build LineageOS Ultra-Slim for Galaxy A04
 
 on:
   workflow_dispatch:
@@ -8,21 +8,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Free Up Disk Space
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: true
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          docker-images: true
-          swap-storage: true
+      - name: Free Up Disk Space (Aggressive Clean)
+        run: |
+          echo "=== Freeing up disk space ==="
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/hostedtoolcache
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo docker image prune -a --force
+          sudo apt-get clean
+          df -h
 
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zip zlib1g-dev
+          sudo apt-get install -y bc bison build-essential curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zip zlib1g-dev
 
       - name: Install Repo Tool
         run: |
@@ -31,15 +32,15 @@ jobs:
           chmod a+x ~/bin/repo
           echo "$HOME/bin" >> $GITHUB_PATH
 
-      - name: Initialize LineageOS Workspace
+      - name: Initialize Workspace (Ultra Slim)
         run: |
           mkdir -p workspace
           cd workspace
-          git config --global user.name "Your Name"
-          git config --global user.email "your-email@example.com"
+          git config --global user.name "Builder"
+          git config --global user.email "builder@example.com"
           repo init -u https://github.com/LineageOS/android.git -b lineage-23.2 --git-lfs --depth=1
 
-      - name: Setup Local Manifests
+      - name: Setup Local Manifests (Your Exact Trees)
         run: |
           cd workspace
           mkdir -p .repo/local_manifests
@@ -52,15 +53,15 @@ jobs:
           </manifest>
           EOF
 
-      - name: Sync Source Tree (Optimized)
+      - name: Sync Source Tree (Super Lean)
         run: |
           cd workspace
-          repo sync -c --no-clone-bundle --no-tags --force-sync -j8 --optimized-fetch --prune
+          repo sync -c --no-clone-bundle --no-tags --force-sync -j4 --optimized-fetch --prune
 
-      - name: Start Compilation
+      - name: Start Compilation (No Ccache to Save Space)
         run: |
           cd workspace
-          export USE_CCACHE=1
+          export USE_CCACHE=0
           source build/envsetup.sh
           breakfast lineage_a04-userdebug
           mka bacon
@@ -74,5 +75,5 @@ jobs:
       - name: Upload Zip
         uses: actions/upload-artifact@v4
         with:
-          name: ROM-A04
+          name: ROM-A04-UltraSlim
           path: artifacts/*.zip
