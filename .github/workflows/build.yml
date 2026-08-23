@@ -1,44 +1,36 @@
-name: Build AxionOS Android 16 for Samsung A04 (Optimized)
+name: Build AxionOS 22.2 for Galaxy A04
 
 on:
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+
     steps:
-      - name: Maximize Build Disk Space
-        uses: easimon/maximize-build-space@v10
-        with:
-          root-reserve-mb: 1024
-          swap-size-mb: 8192
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
-          remove-codeql: 'true'
-          remove-docker-images: 'true'
-
-      - name: Redirect Apt Cache to Large Workspace
+      - name: Absolute Space Eraser (Wipe Everything Unrelated)
         run: |
-          # إنشاء مجلدات البديلة في المساحة الكبيرة
-          sudo mkdir -p ${{ github.workspace }}/apt_cache/archives/partial
-          sudo mkdir -p ${{ github.workspace }}/apt_lists/partial
-          
-          # إعادة توجيه مجلد الحزم المؤقتة
-          sudo rm -rf /var/cache/apt/archives
-          sudo ln -s ${{ github.workspace }}/apt_cache/archives /var/cache/apt/archives
-          
-          # إعادة توجيه مجلد القوائم
-          sudo rm -rf /var/lib/apt/lists
-          sudo ln -s ${{ github.workspace }}/apt_lists /var/lib/apt/lists
+          echo "=== Wiping all preinstalled environments ==="
+          sudo swapoff -a || true
+          sudo rm -f /swapfile || true
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/hostedtoolcache
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/local/lib/node_modules
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /var/lib/docker
+          sudo rm -rf /usr/local/share/vcpkg
+          sudo apt-get purge -y azure-cli google-cloud-cli microsoft-edge-stable firefox powershell ruby-* php-* || true
+          sudo apt-get autoremove -y
+          sudo apt-get clean
+          df -h
 
-      - name: Install Build Dependencies
+      - name: Install Minimal Build Tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32z1-dev libelf-dev liblz4-tool libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zip zlib1g-dev python3 python-is-python3
+          sudo apt-get install -y bc bison build-essential curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zip zlib1g-dev
 
       - name: Install Repo Tool
         run: |
@@ -47,67 +39,55 @@ jobs:
           chmod a+x ~/bin/repo
           echo "$HOME/bin" >> $GITHUB_PATH
 
-      - name: Configure Git Identity
+      - name: Initialize AxionOS Workspace (Lineage-22.2 Branch)
         run: |
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "actions@github.com"
+          mkdir -p workspace
+          cd workspace
+          git config --global user.name "Builder"
+          git config --global user.email "builder@example.com"
+          # تهيئة سورس AxionOS بالفرع الموجود في الصورة الصحيح
+          repo init -u https://github.com/AxionAOSP/android.git -b lineage-22.2 --git-lfs --depth=1 -g default,-mips,-darwin,-windows,-notdefault
 
-      - name: Initialize and Sync AxionOS Android 16 Source (Shallow)
+      - name: Setup Local Manifests for A04
         run: |
-          mkdir -p $GITHUB_WORKSPACE/axion
-          cd $GITHUB_WORKSPACE/axion
-          repo init -u https://github.com/AxionAOSP/android -b lineage-23.2 --depth=1 --git-lfs
-          repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune -j$(nproc --all)
+          cd workspace
+          mkdir -p .repo/local_manifests
+          cat << 'EOF' > .repo/local_manifests/a04.xml
+          <?xml version="1.0" encoding="UTF-8"?>
+          <manifest>
+            <project name="A04-Trees-and-ROMs/android_device_samsung_a04" path="device/samsung/a04" remote="github" revision="lineage-22.2" />
+            <project name="A04-Trees-and-ROMs/android_vendor_samsung_a04" path="vendor/samsung/a04" remote="github" revision="lineage-22.2" />
+            <project name="A04-Trees-and-ROMs/android_kernel_samsung_a04" path="kernel/samsung/a04" remote="github" revision="lineage-22.2" />
+          </manifest>
+          EOF
 
-      - name: Clone Device, Vendor, and Kernel Trees
+      - name: Sync Source Tree (Minimal Groups & Single Thread)
         run: |
-          cd $GITHUB_WORKSPACE/axion
-          git clone https://github.com/A04-Trees-and-ROMs/android_device_samsung_a04.git -b lineage-22.2 device/samsung/a04 --depth=1
-          git clone https://github.com/A04-Trees-and-ROMs/android_vendor_samsung_a04.git -b lineage-22.2 vendor/samsung/a04 --depth=1
-          git clone https://github.com/Halk56855/kernel_samsung_wingtech.git -b android-4.19-stable kernel/samsung/a04 --depth=1
+          cd workspace
+          repo sync -c --no-clone-bundle --no-tags --force-sync -j1 --optimized-fetch --prune
 
-      - name: Configure Ccache Limit
+      - name: Tactical Space Rescue (Delete .repo metadata immediately)
         run: |
-          export CCACHE_DIR=$GITHUB_WORKSPACE/axion/.ccache
-          ccache -M 10G
+          echo "=== DESTROYING .repo to save the build ==="
+          rm -rf workspace/.repo
+          df -h
 
-      - name: Set up Environment and Build ROM
+      - name: Start Compilation (Zero Ccache, Maximum Strip)
         run: |
-          cd $GITHUB_WORKSPACE/axion
+          cd workspace
+          export USE_CCACHE=0
           source build/envsetup.sh
           lunch axion_a04-userdebug
-          mka bacon -j$(nproc --all)
+          mka bacon
 
-      - name: Cleanup Unnecessary Files to Save Space
+      - name: Cleanup and Upload
         run: |
-          rm -rf $GITHUB_WORKSPACE/axion/.ccache
-          rm -rf $GITHUB_WORKSPACE/axion/out/target/product/a04/obj
-
-      - name: Upload to GitHub Artifacts
+          mkdir -p artifacts
+          find workspace/out/target/product/a04/ -name "*.zip" -exec cp {} artifacts/ \;
+          rm -rf workspace/out
+          
+      - name: Upload Zip
         uses: actions/upload-artifact@v4
         with:
-          name: AxionOS-Android16-A04-Build
-          path: ${{ github.workspace }}/axion/out/target/product/a04/*.zip
-
-      - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: "android16-${{ github.run_id }}"
-          name: "AxionOS A04 Android 16 Build ${{ github.run_id }}"
-          files: ${{ github.workspace }}/axion/out/target/product/a04/*.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload to Telegram and GoFile
-        env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          CHAT_ID: "6899540935"
-        run: |
-          ZIP_FILE=$(ls ${{ github.workspace }}/axion/out/target/product/a04/*.zip)
-          
-          echo "جاري رفع الروم إلى تليجرام..."
-          curl -F "chat_id=$CHAT_ID" -F "document=@$ZIP_FILE" https://api.telegram.org/bot$BOT_TOKEN/sendDocument
-          
-          echo "جاري الرفع إلى GoFile..."
-          GOFILE_SERVER=$(curl -s https://api.gofile.io/servers | grep -o '"name":"[^"]*"' | head -n 1 | cut -d'"' -f4)
-          curl -F "file=@$ZIP_FILE" https://${GOFILE_SERVER}.gofile.io/contents/uploadfile
+          name: ROM-A04-AxionOS-22.2
+          path: artifacts/*.zip
