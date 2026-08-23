@@ -37,7 +37,7 @@ jobs:
           cd workspace
           git config --global user.name "Your Name"
           git config --global user.email "your-email@example.com"
-          repo init -u https://github.com/LineageOS/android.git -b lineage-23.2 --git-lfs
+          repo init -u https://github.com/LineageOS/android.git -b lineage-23.2 --git-lfs --depth=1
 
       - name: Setup Local Manifests
         run: |
@@ -52,11 +52,10 @@ jobs:
           </manifest>
           EOF
 
-      - name: Sync Source Tree
+      - name: Sync Source Tree (Optimized)
         run: |
           cd workspace
-          # تم تقليل عدد المهام المتوازية إلى 8 لمنع انهيار السيرفر بسبب الذاكرة
-          repo sync -c --no-clone-bundle --no-tags --force-sync -j8
+          repo sync -c --no-clone-bundle --no-tags --force-sync -j8 --optimized-fetch --prune
 
       - name: Start Compilation
         run: |
