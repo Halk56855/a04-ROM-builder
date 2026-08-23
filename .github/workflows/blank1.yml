@@ -1,4 +1,4 @@
-name: Build LineageOS Absolute-Zero (Infinite Slim)
+name: Build LineageOS 23.2 for Galaxy A04 (Custom Trees)
 
 on:
   workflow_dispatch:
@@ -39,25 +39,24 @@ jobs:
           chmod a+x ~/bin/repo
           echo "$HOME/bin" >> $GITHUB_PATH
 
-      - name: Initialize Workspace (Group Filtering - Zero Weight)
+      - name: Initialize Workspace (Lineage-23.2)
         run: |
           mkdir -p workspace
           cd workspace
           git config --global user.name "Builder"
           git config --global user.email "builder@example.com"
-          # استخدام فلترة المجموعات لتخطي الحزم الزائدة وعدم تحميلها نهائياً
           repo init -u https://github.com/LineageOS/android.git -b lineage-23.2 --git-lfs --depth=1 -g default,-mips,-darwin,-windows,-notdefault
 
-      - name: Setup Local Manifests
+      - name: Setup Local Manifests (Halk56855 Trees)
         run: |
           cd workspace
           mkdir -p .repo/local_manifests
           cat << 'EOF' > .repo/local_manifests/a04.xml
           <?xml version="1.0" encoding="UTF-8"?>
           <manifest>
-            <project name="A04-Trees-and-ROMs/android_device_samsung_a04" path="device/samsung/a04" remote="github" revision="lineage-22.2" />
-            <project name="A04-Trees-and-ROMs/android_vendor_samsung_a04" path="vendor/samsung/a04" remote="github" revision="lineage-22.2" />
-            <project name="A04-Trees-and-ROMs/android_kernel_samsung_a04" path="kernel/samsung/a04" remote="github" revision="lineage-22.2" />
+            <project name="Halk56855/android_device_samsung_a04" path="device/samsung/a04" remote="github" revision="lineage-23.2" />
+            <project name="Halk56855/android_vendor_samsung_a04f" path="vendor/samsung/a04" remote="github" revision="main" />
+            <project name="Halk56855/android_kernel_samsung_a04" path="kernel/samsung/a04" remote="github" revision="lineage-23.2" />
           </manifest>
           EOF
 
@@ -89,5 +88,5 @@ jobs:
       - name: Upload Zip
         uses: actions/upload-artifact@v4
         with:
-          name: ROM-A04-AbsoluteZero
+          name: ROM-A04-Lineage23.2-Halk56855
           path: artifacts/*.zip
