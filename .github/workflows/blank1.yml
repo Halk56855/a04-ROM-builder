@@ -1,4 +1,4 @@
-name: Build LineageOS Atomic-Slim
+name: Build LineageOS Absolute-Zero (Infinite Slim)
 
 on:
   workflow_dispatch:
@@ -8,13 +8,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Atomic Space Liberation (Delete Swap & All Caches)
+      - name: Absolute Space Eraser (Wipe Everything Unrelated)
         run: |
-          echo "=== Deleting Swap to free 4GB+ of root disk ==="
+          echo "=== Wiping all preinstalled environments ==="
           sudo swapoff -a || true
           sudo rm -f /swapfile || true
-          
-          echo "=== Purging all heavy software & tools ==="
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/hostedtoolcache
           sudo rm -rf /usr/share/dotnet
@@ -23,14 +21,13 @@ jobs:
           sudo rm -rf /usr/local/lib/node_modules
           sudo rm -rf /usr/share/swift
           sudo rm -rf /var/lib/docker
-          sudo apt-get purge -y azure-cli google-cloud-cli microsoft-edge-stable firefox powershell || true
+          sudo rm -rf /usr/local/share/vcpkg
+          sudo apt-get purge -y azure-cli google-cloud-cli microsoft-edge-stable firefox powershell ruby-* php-* || true
           sudo apt-get autoremove -y
           sudo apt-get clean
-          
-          echo "=== Checking Free Space ==="
           df -h
 
-      - name: Install Minimal Dependencies
+      - name: Install Minimal Build Tools
         run: |
           sudo apt-get update
           sudo apt-get install -y bc bison build-essential curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zip zlib1g-dev
@@ -42,13 +39,14 @@ jobs:
           chmod a+x ~/bin/repo
           echo "$HOME/bin" >> $GITHUB_PATH
 
-      - name: Initialize Workspace (Atomic Depth)
+      - name: Initialize Workspace (Group Filtering - Zero Weight)
         run: |
           mkdir -p workspace
           cd workspace
           git config --global user.name "Builder"
           git config --global user.email "builder@example.com"
-          repo init -u https://github.com/LineageOS/android.git -b lineage-23.2 --git-lfs --depth=1
+          # استخدام فلترة المجموعات لتخطي الحزم الزائدة وعدم تحميلها نهائياً
+          repo init -u https://github.com/LineageOS/android.git -b lineage-23.2 --git-lfs --depth=1 -g default,-mips,-darwin,-windows,-notdefault
 
       - name: Setup Local Manifests
         run: |
@@ -63,13 +61,18 @@ jobs:
           </manifest>
           EOF
 
-      - name: Sync Source Tree (Single Thread - Extreme Lean)
+      - name: Sync Source Tree (Minimal Groups & Single Thread)
         run: |
           cd workspace
-          # استخدام -j1 لمنع أي تضارب أو ضغط مؤقت على القرص أثناء فك الملفات
           repo sync -c --no-clone-bundle --no-tags --force-sync -j1 --optimized-fetch --prune
 
-      - name: Start Compilation (Zero Ccache)
+      - name: Tactical Space Rescue (Delete .repo metadata immediately)
+        run: |
+          echo "=== DESTROYING .repo to save the build ==="
+          rm -rf workspace/.repo
+          df -h
+
+      - name: Start Compilation (Zero Ccache, Maximum Strip)
         run: |
           cd workspace
           export USE_CCACHE=0
@@ -86,5 +89,5 @@ jobs:
       - name: Upload Zip
         uses: actions/upload-artifact@v4
         with:
-          name: ROM-A04-Atomic
+          name: ROM-A04-AbsoluteZero
           path: artifacts/*.zip
