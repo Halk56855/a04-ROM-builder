@@ -1,4 +1,4 @@
-name: Build LineageOS 23.2 for Galaxy A04 (Custom Trees)
+name: Build LineageOS 23.2 for Galaxy A04f (Custom Trees)
 
 on:
   workflow_dispatch:
@@ -76,7 +76,8 @@ jobs:
           cd workspace
           export USE_CCACHE=0
           source build/envsetup.sh
-          breakfast lineage_a04-userdebug
+          # تم تصحيح اسم المنتج ليطابق a04f بناءً على مستودع الـ Vendor
+          breakfast lineage_a04f-userdebug
           mka bacon
 
       - name: Cleanup and Upload
@@ -88,5 +89,5 @@ jobs:
       - name: Upload Zip
         uses: actions/upload-artifact@v4
         with:
-          name: ROM-A04-Lineage23.2-Halk56855
+          name: ROM-A04f-Lineage23.2
           path: artifacts/*.zip
