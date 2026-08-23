@@ -1,4 +1,4 @@
-name: Build LineageOS Nano-Slim for Galaxy A04
+name: Build LineageOS Atomic-Slim
 
 on:
   workflow_dispatch:
@@ -8,9 +8,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Extreme Disk Space Annihilation (Freeing every MB)
+      - name: Atomic Space Liberation (Delete Swap & All Caches)
         run: |
-          echo "=== Deleting all heavy preinstalled software ==="
+          echo "=== Deleting Swap to free 4GB+ of root disk ==="
+          sudo swapoff -a || true
+          sudo rm -f /swapfile || true
+          
+          echo "=== Purging all heavy software & tools ==="
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/hostedtoolcache
           sudo rm -rf /usr/share/dotnet
@@ -18,15 +22,15 @@ jobs:
           sudo rm -rf /usr/local/share/boost
           sudo rm -rf /usr/local/lib/node_modules
           sudo rm -rf /usr/share/swift
-          sudo rm -rf /usr/local/julia
-          sudo docker image prune -a --force
-          sudo apt-get purge -y azure-cli google-cloud-cli microsoft-edge-stable firefox powershell dotnet-sdk-* || true
+          sudo rm -rf /var/lib/docker
+          sudo apt-get purge -y azure-cli google-cloud-cli microsoft-edge-stable firefox powershell || true
           sudo apt-get autoremove -y
           sudo apt-get clean
-          rm -rf ~/.cache ~/.rustup ~/.cargo
+          
+          echo "=== Checking Free Space ==="
           df -h
 
-      - name: Install Essential Build Tools Only
+      - name: Install Minimal Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y bc bison build-essential curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zip zlib1g-dev
@@ -38,7 +42,7 @@ jobs:
           chmod a+x ~/bin/repo
           echo "$HOME/bin" >> $GITHUB_PATH
 
-      - name: Initialize Workspace (Nano-Depth)
+      - name: Initialize Workspace (Atomic Depth)
         run: |
           mkdir -p workspace
           cd workspace
@@ -59,19 +63,13 @@ jobs:
           </manifest>
           EOF
 
-      - name: Sync Source Tree (Extreme Slim Sync)
+      - name: Sync Source Tree (Single Thread - Extreme Lean)
         run: |
           cd workspace
-          # مزامنة أحادية الخيط أو خيطين لتجنب استهلاك الذاكرة وتخفيف ضغط التحميل
-          repo sync -c --no-clone-bundle --no-tags --force-sync -j2 --optimized-fetch --prune
+          # استخدام -j1 لمنع أي تضارب أو ضغط مؤقت على القرص أثناء فك الملفات
+          repo sync -c --no-clone-bundle --no-tags --force-sync -j1 --optimized-fetch --prune
 
-      - name: NUCLEAR SPACE HACK (Destroy .repo metadata completely)
-        run: |
-          echo "=== DESTROYING .repo to reclaim 40GB+ ==="
-          rm -rf workspace/.repo
-          df -h
-
-      - name: Start Compilation (Zero Ccache, Maximum Strip)
+      - name: Start Compilation (Zero Ccache)
         run: |
           cd workspace
           export USE_CCACHE=0
@@ -88,5 +86,5 @@ jobs:
       - name: Upload Zip
         uses: actions/upload-artifact@v4
         with:
-          name: ROM-A04-NanoSlim
+          name: ROM-A04-Atomic
           path: artifacts/*.zip
