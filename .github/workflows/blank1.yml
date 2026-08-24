@@ -79,8 +79,6 @@ jobs:
       - name: Patch Missing Vendor Variants for Libjxl Dependencies Safely
         run: |
           cd workspace
-          echo "Safely patching libskia_skcms and libhwy if present..."
-          
           set +e
           SKCMS_BP=$(find . -name "Android.bp" -type f -exec grep -l 'libskia_skcms' {} + 2>/dev/null || true)
           if [ -n "$SKCMS_BP" ]; then
@@ -97,13 +95,14 @@ jobs:
           fi
           set -e
 
-      - name: Patch Vendor Light Module Dependency
+      - name: Patch Conflicting Vendor Hardware Modules
         run: |
           cd workspace
-          echo "Removing conflicting light module dependency from vendor Android.bp..."
+          echo "Cleaning up outdated hardware modules in vendor Android.bp..."
           if [ -f "vendor/samsung/a04/Android.bp" ]; then
-            # إزالة السطر المسبب للمشكلة الخاصة بتبعية وحدة الإضاءة غير المتاحة
-            sed -i '/android.hardware.light-V1-ndk_platform/d' vendor/samsung/a04/Android.bp || true
+            sed -i '/vendor.samsung.hardware.light/d' vendor/samsung/a04/Android.bp || true
+            sed -i '/vendor.samsung.hardware.vibrator/d' vendor/samsung/a04/Android.bp || true
+            sed -i '/vendor.samsung.hardware.keymint/d' vendor/samsung/a04/Android.bp || true
           fi
 
       - name: Start Compilation (Zero Ccache, Maximum Strip)
