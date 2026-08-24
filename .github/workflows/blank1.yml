@@ -8,11 +8,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Setup Safe Swap Space (12GB)
+        run: |
+          echo "=== Creating 12GB Swap to prevent OOM crashes ==="
+          sudo swapoff -a || true
+          sudo rm -f /swapfile || true
+          sudo fallocate -l 12G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
+
       - name: Absolute Space Eraser (Wipe Everything Unrelated)
         run: |
           echo "=== Wiping all preinstalled environments ==="
-          sudo swapoff -a || true
-          sudo rm -f /swapfile || true
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/hostedtoolcache
           sudo rm -rf /usr/share/dotnet
@@ -67,9 +76,10 @@ jobs:
 
       - name: Tactical Space Rescue (Delete .repo metadata immediately)
         run: |
-          echo "=== DESTROYING .repo to save the build ==="
+          echo "=== DESTROYING .repo to save space ==="
           rm -rf workspace/.repo
           df -h
+          free -h
 
       - name: Fix Readonly BoardConfig Error
         run: |
@@ -142,16 +152,16 @@ jobs:
 
               with open(path, "w") as f:
                   f.write(text)
-              print("Android.bp successfully cleaned and structured blocks removed.")
+              print("Android.bp successfully cleaned.")
           EOF
 
-      - name: Start Compilation (Zero Ccache, Maximum Strip)
+      - name: Start Compilation (Safe RAM Mode -j2)
         run: |
           cd workspace
           export USE_CCACHE=0
           source build/envsetup.sh
           lunch lineage_a04-trunk_staging-userdebug
-          mka bacon
+          mka bacon -j2
 
       - name: Cleanup and Upload
         run: |
