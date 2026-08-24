@@ -79,6 +79,8 @@ jobs:
       - name: Patch Missing Vendor Variants for Libjxl Dependencies Safely
         run: |
           cd workspace
+          echo "Safely patching libskia_skcms and libhwy if present..."
+          
           set +e
           SKCMS_BP=$(find . -name "Android.bp" -type f -exec grep -l 'libskia_skcms' {} + 2>/dev/null || true)
           if [ -n "$SKCMS_BP" ]; then
@@ -95,15 +97,53 @@ jobs:
           fi
           set -e
 
-      - name: Patch Conflicting Vendor Hardware Modules
+      - name: Safely Remove Conflicting Vendor Modules via Python
         run: |
           cd workspace
-          echo "Cleaning up outdated hardware modules in vendor Android.bp..."
-          if [ -f "vendor/samsung/a04/Android.bp" ]; then
-            sed -i '/vendor.samsung.hardware.light/d' vendor/samsung/a04/Android.bp || true
-            sed -i '/vendor.samsung.hardware.vibrator/d' vendor/samsung/a04/Android.bp || true
-            sed -i '/vendor.samsung.hardware.keymint/d' vendor/samsung/a04/Android.bp || true
-          fi
+          python3 - << 'EOF'
+          import os
+
+          path = "vendor/samsung/a04/Android.bp"
+          if os.path.exists(path):
+              with open(path, "r") as f:
+                  text = f.read()
+
+              keywords = [
+                  "vendor.samsung.hardware.vibrator",
+                  "vendor.samsung.hardware.keymint",
+                  "android.hardware.light"
+              ]
+
+              for kw in keywords:
+                  while True:
+                      idx = text.find(kw)
+                      if idx == -1:
+                          break
+                      start = text.rfind("\n\n", 0, idx)
+                      start = 0 if start == -1 else start + 2
+
+                      brace_count = 0
+                      end = idx
+                      found_open = False
+                      for j in range(start, len(text)):
+                          if text[j] == '{':
+                              brace_count += 1
+                              found_open = True
+                          elif text[j] == '}':
+                              brace_count -= 1
+                              if found_open and brace_count == 0:
+                                  end = j + 1
+                                  break
+                      if end <= idx:
+                          end = text.find("\n}", idx)
+                          end = end + 2 if end != -1 else idx + len(kw)
+
+                      text = text[:start] + text[end:]
+
+              with open(path, "w") as f:
+                  f.write(text)
+              print("Android.bp successfully cleaned and structured blocks removed.")
+          EOF
 
       - name: Start Compilation (Zero Ccache, Maximum Strip)
         run: |
