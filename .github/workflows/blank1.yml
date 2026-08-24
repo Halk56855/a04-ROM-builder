@@ -71,10 +71,10 @@ jobs:
           rm -rf workspace/.repo
           df -h
 
-      - name: Setup Safe Swap Space (3GB - Right Before Build)
+      - name: Setup Safe Swap Space (6GB - Right Before Build)
         run: |
-          echo "=== Creating 3GB Swap to prevent OOM without killing disk space ==="
-          sudo fallocate -l 3G /swapfile
+          echo "=== Creating 6GB Swap to prevent OOM during compilation ==="
+          sudo fallocate -l 6G /swapfile
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
           sudo swapon /swapfile
