@@ -1,4 +1,4 @@
-name: Build Android 15 AOSP GApps Lite for Galaxy A04
+name: Build Android 15 AOSP Ultra-Lite for Galaxy A04
 
 on:
   workflow_dispatch:
@@ -29,15 +29,16 @@ jobs:
           chmod a+x ~/bin/repo
           echo "$HOME/bin" >> $GITHUB_PATH
 
-      - name: Initialize Android 15 Workspace
+      - name: Initialize Workspace with Ultra-Minimal Groups
         run: |
           mkdir -p workspace
           cd workspace
           git config --global user.name "Builder"
           git config --global user.email "builder@example.com"
-          repo init -u https://android.googlesource.com/platform/manifest -b android-15.0.0_r1 --git-lfs --depth=1
+          # استثناء المجموعات الضخمة وغير الضرورية نهائياً لتوفير عشرات الغيغابايت
+          repo init -u https://android.googlesource.com/platform/manifest -b android-15.0.0_r1 --git-lfs --depth=1 -g default,device,vendor,hardware,-mips,-darwin,-windows,-notdefault,-qcom,-mediatek,-gapps
 
-      - name: Setup Local Manifests for A04 (Fixed Remote)
+      - name: Setup Local Manifests for A04
         run: |
           cd workspace
           mkdir -p .repo/local_manifests
@@ -51,13 +52,13 @@ jobs:
           </manifest>
           EOF
 
-      - name: Sync Source Tree (Multi-threaded to finish within 6 hours)
+      - name: Ultra-Light Sync (Single Threaded & Shallow)
         run: |
           cd workspace
-          # رفع عدد الخيوط إلى 4 لتسريع التحميل وتجنب انتهاء المهلة الزمنية
-          repo sync -c --no-clone-bundle --no-tags --force-sync -j4 --optimized-fetch --prune
+          # مزامنة بـ -j1 مع تخطي الملفات الزائدة لمنع امتلاء القرص
+          repo sync -c --no-clone-bundle --no-tags --force-sync -j1 --optimized-fetch --prune
 
-      - name: Immediate Pruning to Free Space Before Build
+      - name: Immediate Total Wipe of .repo Objects to Free Disk Space
         run: |
           cd workspace
           rm -rf .repo/project-objects
@@ -65,14 +66,14 @@ jobs:
           find . -type d -name ".git" | xargs rm -rf
           df -h
 
-      - name: Start Compilation (Android 15 GApps Lite)
+      - name: Start Compilation (Ultra-Lite Mode)
         run: |
           cd workspace
           export USE_CCACHE=0
           source build/envsetup.sh
           lunch aosp_a04-userdebug
           export WITH_GAPPS=true
-          mka bacon -j4
+          mka bacon -j1
 
       - name: Cleanup and Package Artifacts
         run: |
@@ -83,5 +84,5 @@ jobs:
       - name: Upload ROM Zip
         uses: actions/upload-artifact@v4
         with:
-          name: ROM-A04-Android15-GApps-Lite
+          name: ROM-A04-Android15-Ultra-Lite
           path: artifacts/*.zip
