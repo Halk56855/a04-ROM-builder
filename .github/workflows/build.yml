@@ -1,4 +1,4 @@
-name: Build AxionOS 22.2 for Galaxy A04
+name: Build AxionOS 22.2 for Galaxy A04 (GitHub Actions Only)
 
 on:
   workflow_dispatch:
@@ -8,23 +8,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Absolute Space Eraser (Wipe Everything Unrelated)
+      - name: Extreme Disk Space Vacuum (Clean Everything)
         run: |
-          echo "=== Wiping all preinstalled environments ==="
-          sudo swapoff -a || true
-          sudo rm -f /swapfile || true
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/hostedtoolcache
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /usr/local/share/boost
-          sudo rm -rf /usr/local/lib/node_modules
-          sudo rm -rf /usr/share/swift
-          sudo rm -rf /var/lib/docker
-          sudo rm -rf /usr/local/share/vcpkg
-          sudo apt-get purge -y azure-cli google-cloud-cli microsoft-edge-stable firefox powershell ruby-* php-* || true
+          echo "=== Wiping all preinstalled apps, caches, and tools ==="
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/node_modules /usr/local/share/boost /usr/share/swift /var/lib/docker /usr/local/lib/android /opt/hostedtoolcache
+          sudo apt-get purge -y azure-cli google-cloud-cli microsoft-edge-stable firefox powershell ruby-* php-* dotnet-* mysql-* postgresql-* || true
           sudo apt-get autoremove -y
           sudo apt-get clean
+          # تفريغ الـ cache بالكامل وزيادة الـ tmpfs إن أمكن
+          sudo rm -rf /tmp/* /var/tmp/*
           df -h
 
       - name: Install Minimal Build Tools
@@ -39,13 +31,13 @@ jobs:
           chmod a+x ~/bin/repo
           echo "$HOME/bin" >> $GITHUB_PATH
 
-      - name: Initialize AxionOS Workspace
+      - name: Initialize AxionOS Workspace (Minimal Groups)
         run: |
           mkdir -p workspace
           cd workspace
           git config --global user.name "Builder"
           git config --global user.email "builder@example.com"
-          repo init -u https://github.com/AxionAOSP/android.git -b lineage-22.2 --git-lfs --depth=1 -g default,-mips,-darwin,-windows,-notdefault
+          repo init -u https://github.com/AxionAOSP/android.git -b lineage-22.2 --git-lfs --depth=1 -g default,device,vendor,hardware,-mips,-darwin,-windows,-notdefault,-qcom,-mediatek,-gapps
 
       - name: Setup Local Manifests for A04
         run: |
@@ -60,17 +52,17 @@ jobs:
           </manifest>
           EOF
 
-      - name: Sync Source Tree (Max Depth & Minimal Groups)
+      - name: Sync Source Tree (Single Thread to Avoid RAM/Disk Spike)
         run: |
           cd workspace
-          repo sync -c --no-clone-bundle --no-tags --force-sync -j16 --optimized-fetch --prune
+          # استخدام خيوط فردية لتجنب تضخم المؤقتات
+          repo sync -c --no-clone-bundle --no-tags --force-sync -j1 --optimized-fetch --prune
 
-      - name: Aggressive Space Rescue (Purge .repo Projects & Git Histories Safely)
+      - name: Immediate Pruning to Free Space Before Build
         run: |
           cd workspace
-          echo "=== Purging .repo project objects to reclaim 50+ GB ==="
-          rm -rf .repo/projects
           rm -rf .repo/project-objects
+          rm -rf .repo/projects
           find . -type d -name ".git" | xargs rm -rf
           df -h
 
