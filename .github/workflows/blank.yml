@@ -1,0 +1,86 @@
+name: Build Android 15 AOSP GApps Lite for Galaxy A04
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extreme Disk Space Vacuum (Clean Everything)
+        run: |
+          echo "=== Wiping all preinstalled apps, caches, and tools ==="
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/node_modules /usr/local/share/boost /usr/share/swift /var/lib/docker /usr/local/lib/android /opt/hostedtoolcache
+          sudo apt-get purge -y azure-cli google-cloud-cli microsoft-edge-stable firefox powershell ruby-* php-* dotnet-* mysql-* postgresql-* || true
+          sudo apt-get autoremove -y
+          sudo apt-get clean
+          sudo rm -rf /tmp/* /var/tmp/*
+          df -h
+
+      - name: Install Minimal Build Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zip zlib1g-dev
+
+      - name: Install Repo Tool
+        run: |
+          mkdir -p ~/bin
+          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+          chmod a+x ~/bin/repo
+          echo "$HOME/bin" >> $GITHUB_PATH
+
+      - name: Initialize Android 15 Workspace
+        run: |
+          mkdir -p workspace
+          cd workspace
+          git config --global user.name "Builder"
+          git config --global user.email "builder@example.com"
+          # تهيئة مستودع AOSP الأساسي على فرع أندرويد 15
+          repo init -u https://android.googlesource.com/platform/manifest -b android-15.0.0_r1 --git-lfs --depth=1
+
+      - name: Setup Local Manifests for A04 (Android 15 Trees)
+        run: |
+          cd workspace
+          mkdir -p .repo/local_manifests
+          cat << 'EOF' > .repo/local_manifests/a04.xml
+          <?xml version="1.0" encoding="UTF-8"?>
+          <manifest>
+            <project name="A04-Trees-and-ROMs/android_device_samsung_a04" path="device/samsung/a04" remote="github" revision="android-15" />
+            <project name="A04-Trees-and-ROMs/android_vendor_samsung_a04" path="vendor/samsung/a04" remote="github" revision="android-15" />
+            <project name="A04-Trees-and-ROMs/android_kernel_samsung_a04" path="kernel/samsung/a04" remote="github" revision="android-15" />
+          </manifest>
+          EOF
+
+      - name: Sync Source Tree (Single Threaded to Prevent Resource Saturation)
+        run: |
+          cd workspace
+          repo sync -c --no-clone-bundle --no-tags --force-sync -j1 --optimized-fetch --prune
+
+      - name: Immediate Pruning to Free Space Before Build
+        run: |
+          cd workspace
+          rm -rf .repo/project-objects
+          rm -rf .repo/projects
+          find . -type d -name ".git" | xargs rm -rf
+          df -h
+
+      - name: Start Compilation (Android 15 GApps Lite)
+        run: |
+          cd workspace
+          export USE_CCACHE=0
+          source build/envsetup.sh
+          lunch aosp_a04-userdebug
+          export WITH_GAPPS=true
+          mka bacon -j1
+
+      - name: Cleanup and Package Artifacts
+        run: |
+          mkdir -p artifacts
+          find workspace/out/target/product/ -name "*.zip" -exec cp {} artifacts/ \;
+          rm -rf workspace/out
+          
+      - name: Upload ROM Zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: ROM-A04-Android15-GApps-Lite
+          path: artifacts/*.zip
