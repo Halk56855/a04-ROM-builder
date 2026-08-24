@@ -71,12 +71,17 @@ jobs:
           rm -rf workspace/.repo
           df -h
 
+      - name: Fix Readonly BoardConfig Error
+        run: |
+          cd workspace
+          # إزالة السطر المسبب للمشكلة في ملف إعدادات اللوحة لمنع الخطأ
+          sed -i '/PRODUCT_MINIMIZE_JAVA_DEBUG_INFO/d' device/samsung/a04/BoardConfig.mk
+
       - name: Start Compilation (Zero Ccache, Maximum Strip)
         run: |
           cd workspace
           export USE_CCACHE=0
           source build/envsetup.sh
-          # استخدام الصيغة الثلاثية الجديدة المدعومة في LineageOS 23.2
           lunch lineage_a04-trunk_staging-userdebug
           mka bacon
 
