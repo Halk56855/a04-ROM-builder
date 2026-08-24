@@ -1,4 +1,4 @@
-name: Build AxionOS 22.2 for Galaxy A04 (GitHub Actions Only)
+name: Build AxionOS 22.2 for Galaxy A04 (Expanded Disk)
 
 on:
   workflow_dispatch:
@@ -8,16 +8,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Extreme Disk Space Vacuum (Clean Everything)
-        run: |
-          echo "=== Wiping all preinstalled apps, caches, and tools ==="
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/node_modules /usr/local/share/boost /usr/share/swift /var/lib/docker /usr/local/lib/android /opt/hostedtoolcache
-          sudo apt-get purge -y azure-cli google-cloud-cli microsoft-edge-stable firefox powershell ruby-* php-* dotnet-* mysql-* postgresql-* || true
-          sudo apt-get autoremove -y
-          sudo apt-get clean
-          # تفريغ الـ cache بالكامل وزيادة الـ tmpfs إن أمكن
-          sudo rm -rf /tmp/* /var/tmp/*
-          df -h
+      - name: Maximize Build Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
+      - name: Check Available Space After Expansion
+        run: df -h
 
       - name: Install Minimal Build Tools
         run: |
@@ -31,7 +34,7 @@ jobs:
           chmod a+x ~/bin/repo
           echo "$HOME/bin" >> $GITHUB_PATH
 
-      - name: Initialize AxionOS Workspace (Minimal Groups)
+      - name: Initialize AxionOS Workspace (Ultra Slim)
         run: |
           mkdir -p workspace
           cd workspace
@@ -52,13 +55,12 @@ jobs:
           </manifest>
           EOF
 
-      - name: Sync Source Tree (Single Thread to Avoid RAM/Disk Spike)
+      - name: Sync Source Tree (Safe Mode)
         run: |
           cd workspace
-          # استخدام خيوط فردية لتجنب تضخم المؤقتات
-          repo sync -c --no-clone-bundle --no-tags --force-sync -j1 --optimized-fetch --prune
+          repo sync -c --no-clone-bundle --no-tags --force-sync -j4 --optimized-fetch --prune
 
-      - name: Immediate Pruning to Free Space Before Build
+      - name: Immediate Pruning to Save Space
         run: |
           cd workspace
           rm -rf .repo/project-objects
