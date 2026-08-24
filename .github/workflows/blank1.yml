@@ -85,7 +85,6 @@ jobs:
           SKCMS_BP=$(find . -name "Android.bp" -type f -exec grep -l 'libskia_skcms' {} + 2>/dev/null || true)
           if [ -n "$SKCMS_BP" ]; then
             for bp in $SKCMS_BP; do
-              echo "Found libskia_skcms in $bp"
               sed -i '/name: "libskia_skcms"/a \    vendor_available: true,' "$bp" || true
             done
           fi
@@ -93,11 +92,19 @@ jobs:
           HWY_BP=$(find . -name "Android.bp" -type f -exec grep -l 'libhwy' {} + 2>/dev/null || true)
           if [ -n "$HWY_BP" ]; then
             for bp in $HWY_BP; do
-              echo "Found libhwy in $bp"
               sed -i '/name: "libhwy"/a \    vendor_available: true,' "$bp" || true
             done
           fi
           set -e
+
+      - name: Patch Vendor Light Module Dependency
+        run: |
+          cd workspace
+          echo "Removing conflicting light module dependency from vendor Android.bp..."
+          if [ -f "vendor/samsung/a04/Android.bp" ]; then
+            # إزالة السطر المسبب للمشكلة الخاصة بتبعية وحدة الإضاءة غير المتاحة
+            sed -i '/android.hardware.light-V1-ndk_platform/d' vendor/samsung/a04/Android.bp || true
+          fi
 
       - name: Start Compilation (Zero Ccache, Maximum Strip)
         run: |
