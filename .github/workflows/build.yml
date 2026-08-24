@@ -77,14 +77,16 @@ jobs:
           find . -type d -name ".git" | xargs rm -rf
           df -h
 
-      - name: Start Compilation (Fixed Environment)
+      - name: Start Compilation (Forced Target Product)
         run: |
           cd workspace
           export USE_CCACHE=0
           source build/envsetup.sh
-          export TARGET_PRODUCT=axion_a04
-          lunch axion_a04-userdebug || lunch lineage_a04-userdebug || true
-          mka bacon || ax -br || make bacon
+          if [ -d "device/samsung/a04" ]; then
+            lunch lineage_a04-userdebug || lunch axion_a04-userdebug || true
+          fi
+          mkdir -p out/target/product/a04 || true
+          mka bacon || make bacon
 
       - name: Cleanup and Upload
         run: |
