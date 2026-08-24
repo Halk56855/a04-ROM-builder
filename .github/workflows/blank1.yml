@@ -8,20 +8,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Setup Safe Swap Space (12GB)
-        run: |
-          echo "=== Creating 12GB Swap to prevent OOM crashes ==="
-          sudo swapoff -a || true
-          sudo rm -f /swapfile || true
-          sudo fallocate -l 12G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
-          free -h
-
       - name: Absolute Space Eraser (Wipe Everything Unrelated)
         run: |
           echo "=== Wiping all preinstalled environments ==="
+          sudo swapoff -a || true
+          sudo rm -f /swapfile || true
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/hostedtoolcache
           sudo rm -rf /usr/share/dotnet
@@ -76,9 +67,17 @@ jobs:
 
       - name: Tactical Space Rescue (Delete .repo metadata immediately)
         run: |
-          echo "=== DESTROYING .repo to save space ==="
+          echo "=== DESTROYING .repo to free massive space ==="
           rm -rf workspace/.repo
           df -h
+
+      - name: Setup Safe Swap Space (3GB - Right Before Build)
+        run: |
+          echo "=== Creating 3GB Swap to prevent OOM without killing disk space ==="
+          sudo fallocate -l 3G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
           free -h
 
       - name: Fix Readonly BoardConfig Error
