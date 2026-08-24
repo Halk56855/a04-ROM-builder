@@ -35,16 +35,18 @@ jobs:
           cd workspace
           git config --global user.name "Builder"
           git config --global user.email "builder@example.com"
-          # تهيئة مستودع AOSP الأساسي على فرع أندرويد 15
           repo init -u https://android.googlesource.com/platform/manifest -b android-15.0.0_r1 --git-lfs --depth=1
 
-      - name: Setup Local Manifests for A04 (Android 15 Trees)
+      - name: Setup Local Manifests for A04 (Fixed Remote)
         run: |
           cd workspace
           mkdir -p .repo/local_manifests
           cat << 'EOF' > .repo/local_manifests/a04.xml
           <?xml version="1.0" encoding="UTF-8"?>
           <manifest>
+            <!-- تعريف remote الخاص بـ github لتجنب خطأ عدم التعريف -->
+            <remote name="github" fetch="https://github.com/" />
+            
             <project name="A04-Trees-and-ROMs/android_device_samsung_a04" path="device/samsung/a04" remote="github" revision="android-15" />
             <project name="A04-Trees-and-ROMs/android_vendor_samsung_a04" path="vendor/samsung/a04" remote="github" revision="android-15" />
             <project name="A04-Trees-and-ROMs/android_kernel_samsung_a04" path="kernel/samsung/a04" remote="github" revision="android-15" />
