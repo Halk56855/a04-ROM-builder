@@ -120,7 +120,9 @@ jobs:
               keywords = [
                   "vendor.samsung.hardware.vibrator",
                   "vendor.samsung.hardware.keymint",
-                  "android.hardware.light"
+                  "android.hardware.light",
+                  "tzdaemon",
+                  "tzts_daemon"
               ]
 
               for kw in keywords:
@@ -144,8 +146,8 @@ jobs:
                                   end = j + 1
                                   break
                       if end <= idx:
-                          end = text.find("\n}", idx)
-                          end = end + 2 if end != -1 else idx + len(kw)
+                        end = text.find("\n}", idx)
+                        end = end + 2 if end != -1 else idx + len(kw)
 
                       text = text[:start] + text[end:]
 
