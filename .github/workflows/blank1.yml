@@ -74,8 +74,24 @@ jobs:
       - name: Fix Readonly BoardConfig Error
         run: |
           cd workspace
-          # إزالة السطر المسبب للمشكلة في ملف إعدادات اللوحة لمنع الخطأ
           sed -i '/PRODUCT_MINIMIZE_JAVA_DEBUG_INFO/d' device/samsung/a04/BoardConfig.mk
+
+      - name: Patch Missing Vendor Variants for Libjxl Dependencies
+        run: |
+          cd workspace
+          echo "Patching libskia_skcms and libhwy for vendor variants..."
+          
+          SKCMS_BP=$(find . -name "Android.bp" -exec grep -l 'name: "libskia_skcms"' {} +)
+          if [ -n "$SKCMS_BP" ]; then
+            echo "Found libskia_skcms in $SKCMS_BP"
+            sed -i '/name: "libskia_skcms"/a \    vendor_available: true,' "$SKCMS_BP"
+          fi
+
+          HWY_BP=$(find . -name "Android.bp" -exec grep -l 'name: "libhwy"' {} +)
+          if [ -n "$HWY_BP" ]; then
+            echo "Found libhwy in $HWY_BP"
+            sed -i '/name: "libhwy"/a \    vendor_available: true,' "$HWY_BP"
+          fi
 
       - name: Start Compilation (Zero Ccache, Maximum Strip)
         run: |
