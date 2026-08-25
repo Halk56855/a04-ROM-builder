@@ -45,7 +45,7 @@ jobs:
           cd workspace
           git config --global user.name "Builder"
           git config --global user.email "builder@example.com"
-          repo init -u https://github.com/crdroidandroid/android.git -b 15.0 --git-lfs --depth=1 -g default,device,vendor,hardware,-mips,-darwin,-windows,-notdefault,-qcom,-mediatek,-gapps,-rust,-webview
+          repo init -u https://github.com/crdroidandroid/android.git -b 15.0 --git-lfs --depth=1 -g default,device,vendor,hardware,-mips,-darwin,-windows,-notdefault,-qcom,-mediatek,-gapps
 
       - name: Setup Local Manifests for A04 (Lineage-22.2 Branch)
         run: |
@@ -60,11 +60,10 @@ jobs:
           </manifest>
           EOF
           
+          # تم تنظيف ملف الـ remove وعدم حذف الـ rust أو clang لمنع انهيار الـ soong
           cat << 'EOF' > .repo/local_manifests/remove.xml
           <?xml version="1.0" encoding="UTF-8"?>
           <manifest>
-            <remove-project name="platform/prebuilts/rust" />
-            <remove-project name="platform/prebuilts/clang/host/linux-x86" />
           </manifest>
           EOF
 
