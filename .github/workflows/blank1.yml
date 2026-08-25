@@ -10,14 +10,24 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Free Up Disk Space
+      - name: Free Up Disk Space (Aggressive)
         run: |
-          echo "Freeing up disk space..."
+          echo "Cleaning up heavy pre-installed packages and tools..."
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /opt/ghc
           sudo rm -rf "/usr/local/share/boost"
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
           sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/android
+          sudo rm -rf /opt/hostedtoolcache
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /usr/local/julia
+          sudo rm -rf /usr/local/lib/node_modules
+          sudo rm -rf /usr/share/sbt
+          sudo rm -rf /usr/share/ant
+          # حذف صور وتجهيزات Docker لتوفير مساحة هائلة
+          docker system prune -a --volumes -f || true
+          echo "Available disk space after cleanup:"
           df -h
 
       - name: Set up Native Swap Space (16GB)
@@ -55,16 +65,20 @@ jobs:
           git config --global user.name "ROM Builder"
           git config --global user.email "builder@rom.local"
 
-      - name: Initialize and Sync Source
+      - name: Initialize and Sync Source (Optimized for Space)
         run: |
           mkdir -p workspace
           cd workspace
-          repo init -u https://github.com/LineageOS/android.git -b lineage-23.2 --git-lfs
-          repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune -j8
+          # استخدام --depth=1 لتجنب تحميل التاريخ الضخم للسورس وتوفير مساحة هائلة
+          repo init -u https://github.com/LineageOS/android.git -b lineage-23.2 --depth=1 --git-lfs
+          repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --depth=1 -j8
 
       - name: Start Building LineageOS
         run: |
           cd workspace
+          export USE_CCACHE=1
+          export CCACHE_EXEC=/usr/bin/ccache
+          ccache -M 5G
           export ALLOW_MISSING_DEPENDENCIES=true
           source build/envsetup.sh
           lunch lineage_a04-userdebug
