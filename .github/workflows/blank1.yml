@@ -1,175 +1,69 @@
-name: Build LineageOS 23.2 for Galaxy A04 (Custom Trees)
+name: Build LineageOS for Galaxy A04
 
 on:
   workflow_dispatch:
+    # يتيح لك تشغيل البناء يدوياً من تبويب Actions
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-
+    runs-on: ubuntu-24.04
     steps:
-      - name: Absolute Space Eraser (Wipe Everything Unrelated)
-        run: |
-          echo "=== Wiping all preinstalled environments ==="
-          sudo swapoff -a || true
-          sudo rm -f /swapfile || true
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/hostedtoolcache
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /usr/local/share/boost
-          sudo rm -rf /usr/local/lib/node_modules
-          sudo rm -rf /usr/share/swift
-          sudo rm -rf /var/lib/docker
-          sudo rm -rf /usr/local/share/vcpkg
-          sudo apt-get purge -y azure-cli google-cloud-cli microsoft-edge-stable firefox powershell ruby-* php-* || true
-          sudo apt-get autoremove -y
-          sudo apt-get clean
-          df -h
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-      - name: Install Minimal Build Tools
+      - name: Maximize Disk Space
+        uses: easimon/maximize-disk-space@master
+        with:
+          root-reserve-mb: 512
+          swap-size-mb: 1024
+          build-mount-path: '/workspace'
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-code-spaces: 'true'
+
+      - name: Set up Swap Space (16GB)
+        uses: pierreguillot/setup-swap-space@v1.0.2
+        with:
+          swap-size-gb: 16
+
+      - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zip zlib1g-dev
+          sudo apt-get install -y \
+            bc bison build-essential ccache curl flex g++-multilib \
+            gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev \
+            lib32readline-dev lib32z1-dev liblz4-tool libncurses5 \
+            libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils \
+            lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm \
+            zip zlib1g-dev openjdk-17-jdk python3
 
-      - name: Install Repo Tool
+      - name: Set up Repo Tool
         run: |
           mkdir -p ~/bin
           curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
           chmod a+x ~/bin/repo
           echo "$HOME/bin" >> $GITHUB_PATH
 
-      - name: Initialize Workspace (Lineage-23.2)
+      - name: Configure Git Identity
+        run: |
+          git config --global user.name "ROM Builder"
+          git config --global user.email "builder@rom.local"
+
+      - name: Initialize and Sync Source
         run: |
           mkdir -p workspace
           cd workspace
-          git config --global user.name "Builder"
-          git config --global user.email "builder@example.com"
-          repo init -u https://github.com/LineageOS/android.git -b lineage-23.2 --git-lfs --depth=1 -g default,-mips,-darwin,-windows,-notdefault
+          repo init -u https://github.com/LineageOS/android.git -b lineage-23.2 --git-lfs
+          # ضع أوامر مزامنة الـ manifests أو جلب الـ Device Trees هنا إذا لم تكن مضمنة مسبقاً
+          repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune -j8
 
-      - name: Setup Local Manifests (Halk56855 Trees)
+      - name: Start Building LineageOS
         run: |
           cd workspace
-          mkdir -p .repo/local_manifests
-          cat << 'EOF' > .repo/local_manifests/a04.xml
-          <?xml version="1.0" encoding="UTF-8"?>
-          <manifest>
-            <project name="Halk56855/android_device_samsung_a04" path="device/samsung/a04" remote="github" revision="lineage-23.2" />
-            <project name="Halk56855/android_vendor_samsung_a04f" path="vendor/samsung/a04" remote="github" revision="main" />
-            <project name="Halk56855/android_kernel_samsung_a04" path="kernel/samsung/a04" remote="github" revision="lineage-23.2" />
-          </manifest>
-          EOF
-
-      - name: Sync Source Tree (Minimal Groups & Single Thread)
-        run: |
-          cd workspace
-          repo sync -c --no-clone-bundle --no-tags --force-sync -j1 --optimized-fetch --prune
-
-      - name: Tactical Space Rescue (Delete .repo metadata immediately)
-        run: |
-          echo "=== DESTROYING .repo to free massive space ==="
-          rm -rf workspace/.repo
-          df -h
-
-      - name: Setup Safe Swap Space (6GB - Right Before Build)
-        run: |
-          echo "=== Creating 6GB Swap to prevent OOM during compilation ==="
-          sudo fallocate -l 6G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
-          free -h
-
-      - name: Fix Readonly BoardConfig Error
-        run: |
-          cd workspace
-          sed -i '/PRODUCT_MINIMIZE_JAVA_DEBUG_INFO/d' device/samsung/a04/BoardConfig.mk
-
-      - name: Patch Missing Vendor Variants for Dependencies Safely
-        run: |
-          cd workspace
-          echo "Safely patching libskia_skcms, libhwy, and xmp_toolkit_sdk..."
-          
-          set +e
-          for lib in libskia_skcms libhwy xmp_toolkit_sdk; do
-            BP_FILES=$(find . -name "Android.bp" -type f -exec grep -l "name: \"$lib\"" {} + 2>/dev/null || true)
-            if [ -n "$BP_FILES" ]; then
-              for bp in $BP_FILES; do
-                if ! grep -q "vendor_available: true" "$bp"; then
-                  sed -i "/name: \"$lib\"/a \\    vendor_available: true," "$bp" || true
-                  echo "Successfully patched $lib in $bp"
-                fi
-              done
-            fi
-          done
-          set -e
-
-      - name: Safely Remove Conflicting Vendor Modules via Python
-        run: |
-          cd workspace
-          python3 - << 'EOF'
-          import os
-
-          path = "vendor/samsung/a04/Android.bp"
-          if os.path.exists(path):
-              with open(path, "r") as f:
-                  text = f.read()
-
-              keywords = [
-                  "vendor.samsung.hardware.vibrator",
-                  "vendor.samsung.hardware.keymint",
-                  "android.hardware.light",
-                  "tzdaemon",
-                  "tzts_daemon"
-              ]
-
-              for kw in keywords:
-                  while True:
-                      idx = text.find(kw)
-                      if idx == -1:
-                          break
-                      start = text.rfind("\n\n", 0, idx)
-                      start = 0 if start == -1 else start + 2
-
-                      brace_count = 0
-                      end = idx
-                      found_open = False
-                      for j in range(start, len(text)):
-                          if text[j] == '{':
-                              brace_count += 1
-                              found_open = True
-                          elif text[j] == '}':
-                              brace_count -= 1
-                              if found_open and brace_count == 0:
-                                  end = j + 1
-                                  break
-                      if end <= idx:
-                        end = text.find("\n}", idx)
-                        end = end + 2 if end != -1 else idx + len(kw)
-
-                      text = text[:start] + text[end:]
-
-              with open(path, "w") as f:
-                  f.write(text)
-              print("Android.bp successfully cleaned.")
-          EOF
-
-      - name: Start Compilation (Safe RAM Mode -j2)
-        run: |
-          cd workspace
-          export USE_CCACHE=0
+          export ALLOW_MISSING_DEPENDENCIES=true
           source build/envsetup.sh
-          lunch lineage_a04-trunk_staging-userdebug
-          mka bacon -j2
-
-      - name: Cleanup and Upload
-        run: |
-          mkdir -p artifacts
-          find workspace/out/target/product/a04/ -name "lineage-*.zip" -exec cp {} artifacts/ \;
-          rm -rf workspace/out
+          lunch lineage_a04-userdebug
           
-      - name: Upload Zip
-        uses: actions/upload-artifact@v4
-        with:
-          name: ROM-A04-Lineage23.2-Halk56855
-          path: artifacts/*.zip
+          # استخدام -j8 لمنع انهيار الـ RAM (الخادم يمتلك 15.6GB فقط)
+          mka bacon -j8
