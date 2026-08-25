@@ -23,11 +23,8 @@ jobs:
       - name: Set up Native Swap Space (16GB)
         run: |
           echo "Setting up 16GB swap space safely..."
-          # إيقاف وحذف أي ملف تبادل قديم لمنع أي تعارض أو أخطاء
           sudo swapoff /swapfile 2>/dev/null || true
           sudo rm -f /swapfile
-          
-          # استخدام طريقة dd الآمنة والمضمونة لتخصيص المساحة
           sudo dd if=/dev/zero of=/swapfile bs=1M count=16384 status=progress
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
@@ -40,9 +37,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             bc bison build-essential ccache curl flex g++-multilib \
-            gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev \
-            lib32readline-dev lib32z1-dev liblz4-tool libncurses5 \
-            libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils \
+            gcc-multilib git gnupg gperf imagemagick lib32readline-dev \
+            lib32z1-dev liblz4-tool libncurses-dev libncurses56 \
+            libsdl1.2-dev libssl-dev libxml2 libxml2-utils \
             lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm \
             zip zlib1g-dev openjdk-17-jdk python3
 
