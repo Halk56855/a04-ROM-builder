@@ -1,4 +1,4 @@
-name: Build AxionOS 22.2 for Galaxy A04 (Absolute Quantum Compression)
+name: Build crDroid for Galaxy A04 (GitHub Actions Only)
 
 on:
   workflow_dispatch:
@@ -39,24 +39,25 @@ jobs:
           chmod a+x ~/bin/repo
           echo "$HOME/bin" >> $GITHUB_PATH
 
-      - name: Initialize AxionOS Workspace (Extreme Void Filter)
+      - name: Initialize crDroid Workspace (Corrected URL)
         run: |
           mkdir -p workspace
           cd workspace
           git config --global user.name "Builder"
           git config --global user.email "builder@example.com"
-          repo init -u https://github.com/AxionAOSP/android.git -b lineage-22.2 --git-lfs --depth=1 -g default,device,vendor,hardware,-mips,-darwin,-windows,-notdefault,-qcom,-mediatek,-gapps,-rust,-webview
+          # استخدام الرابط الصحيح المطابق تماماً لصفحة crDroid في الصورة
+          repo init -u https://github.com/crdroidandroid/android.git -b 15.0 --git-lfs --depth=1 -g default,device,vendor,hardware,-mips,-darwin,-windows,-notdefault,-qcom,-mediatek,-gapps,-rust,-webview
 
-      - name: Setup Local Manifests for A04
+      - name: Setup Local Manifests for A04 (crDroid)
         run: |
           cd workspace
           mkdir -p .repo/local_manifests
           cat << 'EOF' > .repo/local_manifests/a04.xml
           <?xml version="1.0" encoding="UTF-8"?>
           <manifest>
-            <project name="A04-Trees-and-ROMs/android_device_samsung_a04" path="device/samsung/a04" remote="github" revision="lineage-22.2" />
-            <project name="A04-Trees-and-ROMs/android_vendor_samsung_a04" path="vendor/samsung/a04" remote="github" revision="lineage-22.2" />
-            <project name="A04-Trees-and-ROMs/android_kernel_samsung_a04" path="kernel/samsung/a04" remote="github" revision="lineage-22.2" />
+            <project name="A04-Trees-and-ROMs/android_device_samsung_a04" path="device/samsung/a04" remote="github" revision="15.0" />
+            <project name="A04-Trees-and-ROMs/android_vendor_samsung_a04" path="vendor/samsung/a04" remote="github" revision="15.0" />
+            <project name="A04-Trees-and-ROMs/android_kernel_samsung_a04" path="kernel/samsung/a04" remote="github" revision="15.0" />
           </manifest>
           EOF
           
@@ -77,18 +78,18 @@ jobs:
           find . -type d -name ".git" | xargs rm -rf
           df -h
 
-      - name: Start Compilation (Hardcoded Product Variables)
+      - name: Start Compilation for crDroid
         run: |
           cd workspace
           export USE_CCACHE=0
-          export TARGET_PRODUCT=axion_a04
+          export TARGET_PRODUCT=crdroid_a04
           export TARGET_DEVICE=a04
           export TARGET_BUILD_VARIANT=userdebug
-          export PLATFORM_VERSION=15
-          export PRODUCT_UNAME=Linux
+          export PRODUCT_OUT="$PWD/out/target/product/a04"
+          mkdir -p "$PRODUCT_OUT"
+          
           source build/envsetup.sh
-          lunch axion_a04-userdebug || lunch lineage_a04-userdebug || true
-          mkdir -p out/target/product/a04 || true
+          lunch crdroid_a04-userdebug || lunch lineage_a04-userdebug || true
           mka bacon || make bacon
 
       - name: Cleanup and Upload
@@ -100,5 +101,5 @@ jobs:
       - name: Upload Zip
         uses: actions/upload-artifact@v4
         with:
-          name: ROM-A04-AxionOS-22.2
+          name: ROM-A04-crDroid
           path: artifacts/*.zip
