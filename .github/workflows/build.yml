@@ -27,10 +27,10 @@ jobs:
           sudo apt-get clean
           df -h
 
-      - name: Install Minimal Build Tools
+      - name: Install Minimal Build Tools & Ccache
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zip zlib1g-dev
+          sudo apt-get install -y bc bison build-essential curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zip zlib1g-dev ccache
 
       - name: Install Repo Tool
         run: |
@@ -77,10 +77,11 @@ jobs:
           find . -type d -name ".git" | xargs rm -rf
           df -h
 
-      - name: Start Compilation for crDroid
+      - name: Start Compilation for crDroid (Fixed Release & Lunch)
         run: |
           cd workspace
           export USE_CCACHE=0
+          export TARGET_RELEASE=trunk_staging
           export TARGET_PRODUCT=crdroid_a04
           export TARGET_DEVICE=a04
           export TARGET_BUILD_VARIANT=userdebug
@@ -88,7 +89,7 @@ jobs:
           mkdir -p "$PRODUCT_OUT"
           
           source build/envsetup.sh
-          lunch crdroid_a04-userdebug || lunch lineage_a04-userdebug || true
+          lunch crdroid_a04-trunk_staging-userdebug || lunch lineage_a04-trunk_staging-userdebug || lunch crdroid_a04-userdebug || true
           mka bacon || make bacon
 
       - name: Cleanup and Upload
