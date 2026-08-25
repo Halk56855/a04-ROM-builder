@@ -85,25 +85,23 @@ jobs:
           cd workspace
           sed -i '/PRODUCT_MINIMIZE_JAVA_DEBUG_INFO/d' device/samsung/a04/BoardConfig.mk
 
-      - name: Patch Missing Vendor Variants for Libjxl Dependencies Safely
+      - name: Patch Missing Vendor Variants for Dependencies Safely
         run: |
           cd workspace
-          echo "Safely patching libskia_skcms and libhwy if present..."
+          echo "Safely patching libskia_skcms, libhwy, and xmp_toolkit_sdk..."
           
           set +e
-          SKCMS_BP=$(find . -name "Android.bp" -type f -exec grep -l 'libskia_skcms' {} + 2>/dev/null || true)
-          if [ -n "$SKCMS_BP" ]; then
-            for bp in $SKCMS_BP; do
-              sed -i '/name: "libskia_skcms"/a \    vendor_available: true,' "$bp" || true
-            done
-          fi
-
-          HWY_BP=$(find . -name "Android.bp" -type f -exec grep -l 'libhwy' {} + 2>/dev/null || true)
-          if [ -n "$HWY_BP" ]; then
-            for bp in $HWY_BP; do
-              sed -i '/name: "libhwy"/a \    vendor_available: true,' "$bp" || true
-            done
-          fi
+          for lib in libskia_skcms libhwy xmp_toolkit_sdk; do
+            BP_FILES=$(find . -name "Android.bp" -type f -exec grep -l "name: \"$lib\"" {} + 2>/dev/null || true)
+            if [ -n "$BP_FILES" ]; then
+              for bp in $BP_FILES; do
+                if ! grep -q "vendor_available: true" "$bp"; then
+                  sed -i "/name: \"$lib\"/a \\    vendor_available: true," "$bp" || true
+                  echo "Successfully patched $lib in $bp"
+                fi
+              done
+            fi
+          done
           set -e
 
       - name: Safely Remove Conflicting Vendor Modules via Python
