@@ -21,6 +21,9 @@ jobs:
           sudo rm -rf /opt/hostedtoolcache
           sudo rm -rf /usr/share/code
           sudo rm -rf /usr/local/lib/node_modules
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /opt/pypy
+          sudo rm -rf /usr/local/share/vcpkg
           sudo apt-get purge -y azure-cli google-cloud-cli microsoft-edge-stable firefox powershell ruby-* php-* dotnet-* mysql-* postgresql-* || true
           sudo apt-get autoremove -y
           sudo apt-get clean
@@ -45,6 +48,7 @@ jobs:
           cd workspace
           git config --global user.name "Builder"
           git config --global user.email "builder@example.com"
+          # جلب أضيق مجموعة ممكنة متجنبين الـ rust والـ qcom والـ mediatek لجعل الحجم صغيراً جداً
           repo init -u https://github.com/crdroidandroid/android.git -b 15.0 --git-lfs --depth=1 -g default,device,vendor,hardware,-mips,-darwin,-windows,-notdefault,-qcom,-mediatek,-gapps,-rust
 
       - name: Setup Local Manifests for A04
@@ -52,7 +56,7 @@ jobs:
           cd workspace
           mkdir -p .repo/local_manifests
           cat << 'EOF' > .repo/local_manifests/a04.xml
-          <?xml version="1.0" encoding="UTF-8"?>
+          <?xml version="1.05" encoding="UTF-8"?>
           <manifest>
             <project name="A04-Trees-and-ROMs/android_device_samsung_a04" path="device/samsung/a04" remote="github" revision="lineage-22.2" />
             <project name="A04-Trees-and-ROMs/android_vendor_samsung_a04" path="vendor/samsung/a04" remote="github" revision="lineage-22.2" />
@@ -60,22 +64,23 @@ jobs:
           </manifest>
           EOF
           
-          # ملف إزالة فارغ لضمان عدم حذف أدوات النظام الحيوية (مثل Clang/LLVM)
+          # استبعاد الأدوات الثقيلة مثل rust أو clang الزائدة إذا لم تكن ضرورية للبناء المطلق لتوفير مساحة الـ Disk
           cat << 'EOF' > .repo/local_manifests/remove.xml
           <?xml version="1.0" encoding="UTF-8"?>
           <manifest>
+            <remove-project name="platform/prebuilts/rust" />
           </manifest>
           EOF
 
       - name: Sync Source Tree (Space Optimized)
         run: |
           cd workspace
+          # استخدام مفاتيح أمان توفر المساحة لأقصى درجة وتتجاوز مشاكل امتلاء الهارد
           repo sync -c --no-clone-bundle --no-tags --force-sync -j4 --optimized-fetch --prune || repo sync -c --no-clone-bundle --no-tags --force-sync -j1 --optimized-fetch --prune
           
-          # تنظيف مخلفات الـ git والـ objects لتفريغ المساحة فوراً مع الاحتفاظ بملفات المضيف الضرورية
+          # تفريغ الـ git objects فورا بعد الـ sync لتوفير مساحة كافية للبناء
           rm -rf .repo/project-objects
           rm -rf .repo/projects
-          find . -type d -name ".git" | xargs rm -rf
           df -h
 
       - name: Start Compilation for crDroid
@@ -90,8 +95,7 @@ jobs:
           mkdir -p "$PRODUCT_OUT"
           
           source build/envsetup.sh
-          # تجربة سياق lunch الخاص بـ lineage المدمج في التري الخاص بالجهاز
-          lunch lineage_a04-trunk_staging-userdebug || lunch lineage_a04-userdebug || lunch crdroid_a04-trunk_staging-userdebug || true
+          lunch lineage_a04-trunk_staging-userdebug || lunch lineage_a04-userdebug || true
           mka bacon || make bacon
 
       - name: Cleanup and Upload
