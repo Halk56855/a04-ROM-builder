@@ -60,10 +60,10 @@ jobs:
           </manifest>
           EOF
           
+          # ملف إزالة فارغ لضمان عدم حذف أدوات النظام الحيوية (مثل Clang/LLVM)
           cat << 'EOF' > .repo/local_manifests/remove.xml
           <?xml version="1.0" encoding="UTF-8"?>
           <manifest>
-            <remove-project name="platform/prebuilts/clang/host/linux-x86" />
           </manifest>
           EOF
 
@@ -72,11 +72,7 @@ jobs:
           cd workspace
           repo sync -c --no-clone-bundle --no-tags --force-sync -j4 --optimized-fetch --prune || repo sync -c --no-clone-bundle --no-tags --force-sync -j1 --optimized-fetch --prune
           
-          # تثبيت نسخة Clang خفيفة ومتوافقة لتجنب الانهيار ومساحة القرص
-          mkdir -p prebuilts/clang/host/linux-x86
-          git clone --depth=1 https://github.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r536225.git prebuilts/clang/host/linux-x86/clang-r536225 || true
-
-          # تنظيف مخلفات الـ git والـ objects لتفريغ المساحة فوراً
+          # تنظيف مخلفات الـ git والـ objects لتفريغ المساحة فوراً مع الاحتفاظ بملفات المضيف الضرورية
           rm -rf .repo/project-objects
           rm -rf .repo/projects
           find . -type d -name ".git" | xargs rm -rf
@@ -87,14 +83,15 @@ jobs:
           cd workspace
           export USE_CCACHE=0
           export TARGET_RELEASE=trunk_staging
-          export TARGET_PRODUCT=crdroid_a04
+          export TARGET_PRODUCT=lineage_a04
           export TARGET_DEVICE=a04
           export TARGET_BUILD_VARIANT=userdebug
           export PRODUCT_OUT="$PWD/out/target/product/a04"
           mkdir -p "$PRODUCT_OUT"
           
           source build/envsetup.sh
-          lunch crdroid_a04-trunk_staging-userdebug || lunch lineage_a04-trunk_staging-userdebug || lunch crdroid_a04-userdebug || true
+          # تجربة سياق lunch الخاص بـ lineage المدمج في التري الخاص بالجهاز
+          lunch lineage_a04-trunk_staging-userdebug || lunch lineage_a04-userdebug || lunch crdroid_a04-trunk_staging-userdebug || true
           mka bacon || make bacon
 
       - name: Cleanup and Upload
