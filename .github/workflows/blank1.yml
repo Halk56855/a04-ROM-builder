@@ -17,14 +17,18 @@ jobs:
           sudo rm -rf /opt/ghc
           sudo rm -rf "/usr/local/share/boost"
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-          # إزالة مجلات أندرويد الافتراضية الثقيلة إن وجدت لتوفير مساحة
           sudo rm -rf /usr/local/lib/android
           df -h
 
       - name: Set up Native Swap Space (16GB)
         run: |
-          echo "Setting up 16GB swap space..."
-          sudo fallocate -l 16G /swapfile
+          echo "Setting up 16GB swap space safely..."
+          # إيقاف وحذف أي ملف تبادل قديم لمنع أي تعارض أو أخطاء
+          sudo swapoff /swapfile 2>/dev/null || true
+          sudo rm -f /swapfile
+          
+          # استخدام طريقة dd الآمنة والمضمونة لتخصيص المساحة
+          sudo dd if=/dev/zero of=/swapfile bs=1M count=16384 status=progress
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
           sudo swapon /swapfile
