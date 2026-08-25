@@ -2,7 +2,6 @@ name: Build LineageOS for Galaxy A04
 
 on:
   workflow_dispatch:
-    # يتيح لك تشغيل البناء يدوياً من تبويب Actions
 
 jobs:
   build:
@@ -11,21 +10,26 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Maximize Disk Space
-        uses: easimon/maximize-disk-space@master
-        with:
-          root-reserve-mb: 512
-          swap-size-mb: 1024
-          build-mount-path: '/workspace'
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
-          remove-code-spaces: 'true'
+      - name: Free Up Disk Space
+        run: |
+          echo "Freeing up disk space..."
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          # إزالة مجلات أندرويد الافتراضية الثقيلة إن وجدت لتوفير مساحة
+          sudo rm -rf /usr/local/lib/android
+          df -h
 
-      - name: Set up Swap Space (16GB)
-        uses: pierreguillot/setup-swap-space@v1.0.2
-        with:
-          swap-size-gb: 16
+      - name: Set up Native Swap Space (16GB)
+        run: |
+          echo "Setting up 16GB swap space..."
+          sudo fallocate -l 16G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          echo "Swap space created successfully:"
+          free -h
 
       - name: Install Build Dependencies
         run: |
@@ -55,7 +59,6 @@ jobs:
           mkdir -p workspace
           cd workspace
           repo init -u https://github.com/LineageOS/android.git -b lineage-23.2 --git-lfs
-          # ضع أوامر مزامنة الـ manifests أو جلب الـ Device Trees هنا إذا لم تكن مضمنة مسبقاً
           repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune -j8
 
       - name: Start Building LineageOS
@@ -64,6 +67,4 @@ jobs:
           export ALLOW_MISSING_DEPENDENCIES=true
           source build/envsetup.sh
           lunch lineage_a04-userdebug
-          
-          # استخدام -j8 لمنع انهيار الـ RAM (الخادم يمتلك 15.6GB فقط)
           mka bacon -j8
