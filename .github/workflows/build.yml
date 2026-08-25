@@ -8,23 +8,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Maximize Build Disk Space
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: true
-          android: false
-          dotnet: true
-          haskell: true
-          large-packages: true
-          docker-images: true
-          swap-storage: false
-
-      - name: Extreme Vacuum & Cache Eraser
+      - name: Free Up Huge Disk Space (Aggressive Mode)
         run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/share/swift /var/lib/docker /usr/local/lib/android /opt/hostedtoolcache
+          echo "=== Free Space Before ==="
+          df -h
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /var/lib/docker
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/hostedtoolcache
+          sudo rm -rf /usr/share/code
+          sudo rm -rf /usr/local/lib/node_modules
           sudo apt-get purge -y azure-cli google-cloud-cli microsoft-edge-stable firefox powershell ruby-* php-* dotnet-* mysql-* postgresql-* || true
           sudo apt-get autoremove -y
           sudo apt-get clean
+          echo "=== Free Space After ==="
           df -h
 
       - name: Install Minimal Build Tools & Ccache
@@ -39,15 +39,15 @@ jobs:
           chmod a+x ~/bin/repo
           echo "$HOME/bin" >> $GITHUB_PATH
 
-      - name: Initialize crDroid Workspace
+      - name: Initialize crDroid Workspace (Ultra Slim)
         run: |
           mkdir -p workspace
           cd workspace
           git config --global user.name "Builder"
           git config --global user.email "builder@example.com"
-          repo init -u https://github.com/crdroidandroid/android.git -b 15.0 --git-lfs --depth=1 -g default,device,vendor,hardware,-mips,-darwin,-windows,-notdefault,-qcom,-mediatek,-gapps
+          repo init -u https://github.com/crdroidandroid/android.git -b 15.0 --git-lfs --depth=1 -g default,device,vendor,hardware,-mips,-darwin,-windows,-notdefault,-qcom,-mediatek,-gapps,-rust
 
-      - name: Setup Local Manifests for A04 (Lineage-22.2 Branch)
+      - name: Setup Local Manifests for A04
         run: |
           cd workspace
           mkdir -p .repo/local_manifests
@@ -60,23 +60,29 @@ jobs:
           </manifest>
           EOF
           
-          # تم تنظيف ملف الـ remove وعدم حذف الـ rust أو clang لمنع انهيار الـ soong
           cat << 'EOF' > .repo/local_manifests/remove.xml
           <?xml version="1.0" encoding="UTF-8"?>
           <manifest>
+            <remove-project name="platform/prebuilts/clang/host/linux-x86" />
           </manifest>
           EOF
 
-      - name: Sync Source Tree (Nano Mode)
+      - name: Sync Source Tree (Space Optimized)
         run: |
           cd workspace
-          repo sync -c --no-clone-bundle --no-tags --force-sync -j1 --optimized-fetch --prune || true
+          repo sync -c --no-clone-bundle --no-tags --force-sync -j4 --optimized-fetch --prune || repo sync -c --no-clone-bundle --no-tags --force-sync -j1 --optimized-fetch --prune
+          
+          # تثبيت نسخة Clang خفيفة ومتوافقة لتجنب الانهيار ومساحة القرص
+          mkdir -p prebuilts/clang/host/linux-x86
+          git clone --depth=1 https://github.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r536225.git prebuilts/clang/host/linux-x86/clang-r536225 || true
+
+          # تنظيف مخلفات الـ git والـ objects لتفريغ المساحة فوراً
           rm -rf .repo/project-objects
           rm -rf .repo/projects
           find . -type d -name ".git" | xargs rm -rf
           df -h
 
-      - name: Start Compilation for crDroid (Fixed Release & Lunch)
+      - name: Start Compilation for crDroid
         run: |
           cd workspace
           export USE_CCACHE=0
