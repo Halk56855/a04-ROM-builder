@@ -2,13 +2,13 @@
 set -e
 
 echo "=========================================================="
-echo "=== Robust Samsung A04 ROM Customizer (Multi-LZ4) ==="
+echo "=== Ultimate Samsung A04 MicroG & Lawnchair ROM Builder ==="
 echo "=========================================================="
 
 mkdir -p work_dir
 mkdir -p build_output
 
-# 1. فك ضغط الأرشيف الأساسي
+# 1. استخراج الأرشيف الأساسي
 echo "[*] Extracting base firmware/AP archive..."
 BASE_ARCHIVE=$(find extracted_firmware -name "*.tar" -o -name "*.tar.md5" -o -name "*.zip" | head -n 1)
 
@@ -22,56 +22,52 @@ else
     cp -r extracted_firmware/* work_dir/
 fi
 
-# 2. فك ضغط جميع ملفات lz4 الموجودة تلقائياً
+# 2. فك ضغط جميع ملفات الصور المضغوطة بصيغة lz4 تلقائياً
 echo "[*] Decompressing all lz4 compressed images..."
 find work_dir/ -name "*.lz4" | while read -r lz4_file; do
     echo "Decompressing: $lz4_file"
     lz4 -d -q "$lz4_file" "${lz4_file%.lz4}" || true
 done
 
-# 3. البحث عن مسار نظام system أو system.img
+# 3. إزالة تطبيقات جوجل الثقيلة (Debloating) وحقن الخدمات البديلة ومشغل Lawnchair
 SYS_IMG=$(find work_dir/ -name "system.img" | head -n 1)
-
 if [ -n "$SYS_IMG" ]; then
-    echo "[*] Found system.img directly at: $SYS_IMG"
+    echo "[*] Found system.img. Setting up paths..."
     SYS_DIR=$(dirname "$SYS_IMG")
     
-    # تعديل تطبيقات النظام مباشرة
     if [ -d "$SYS_DIR/system" ]; then
         TARGET_SYS="$SYS_DIR/system"
     else
         TARGET_SYS="$SYS_DIR"
     fi
 
-    echo "[*] Applying debloat and customizations..."
+    echo "[*] Removing heavy Google Bloatware..."
     rm -rf "$TARGET_SYS/priv-app/GmsCore" 2>/dev/null || true
     rm -rf "$TARGET_SYS/priv-app/Phonesky" 2>/dev/null || true
     rm -rf "$TARGET_SYS/app/GoogleServicesFramework" 2>/dev/null || true
 
-    # حقن Lawnchair
+    # حقن Lawnchair Launcher الشاشة الرئيسية
+    echo "[*] Injecting Lawnchair Launcher..."
     mkdir -p "$TARGET_SYS/priv-app/Lawnchair"
     wget -O "$TARGET_SYS/priv-app/Lawnchair/Lawnchair.apk" "https://github.com/LawnchairLauncher/lawnchair/releases/download/v12.1-alpha.4/Lawnchair.apk" 2>/dev/null || true
+    chmod 755 "$TARGET_SYS/priv-app/Lawnchair"
+    chmod 644 "$TARGET_SYS/priv-app/Lawnchair/Lawnchair.apk"
+fi
 
-    # تعديل build.prop
-    BUILD_PROP=$(find work_dir/ -name "build.prop" | head -n 1)
-    if [ -f "$BUILD_PROP" ]; then
-        cat <<EOF >> "$BUILD_PROP"
+# 4. تعديل ملف build.prop لتفعيل MicroG وتزوير التوقيع الرقمي وتحسين الأداء
+BUILD_PROP=$(find work_dir/ -name "build.prop" | head -n 1)
+if [ -f "$BUILD_PROP" ]; then
+    cat <<EOF >> "$BUILD_PROP"
 
-# === Custom Tweaks & MicroG ===
+# === MicroG, Signature Spoofing & Performance Tweaks ===
 ro.config.hw_fast_launch=true
 persist.sys.ui.smooth=true
 ro.build.signature_spoofing.enabled=true
 persist.microg.support=true
 EOF
-    fi
+    echo "[*] build.prop successfully patched."
 fi
 
-# 4. تجميع كافة الملفات الناتجة في أرشيف AP Odin النهائي
-echo "[*] Packaging all files into Odin AP tar..."
-mkdir -p output
-# تجميع كل الملفات الفردية المستخرجة (بما فيها الصور المعدلة) لتشكل ملف AP متكامل
-tar -cvf output/AP_CUSTOM_A04_MICROG.tar -C work_dir/ .
-
 echo "=========================================================="
-echo "🎉 Build Script Completed Successfully! 🎉"
+echo "🎉 ROM Customization & Script Execution Completed! 🎉"
 echo "=========================================================="
