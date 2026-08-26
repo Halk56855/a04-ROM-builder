@@ -15,21 +15,19 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            git wget curl python3 python3-pip \
+            git wget curl python3 python3-pip lz4 \
             openjdk-17-jdk zip unzip tar cpio android-sdk-libsparse-utils
 
-      # 3. تحميل الروم الأساسي الخفيف من SourceForge
       - name: Download Base Clean ROM
         run: |
           echo "Starting base ROM download from SourceForge..."
           mkdir -p extracted_firmware
-          wget -O firmware.zip "https://downloads.sourceforge.net/project/oneui-unleashed/A04/No-GApps%20with%20Samsung%20Bloatware%20Debloated/Odin%20Flashable/V1.1/A04%20Clean%20Debloat.zip"
+          wget -O firmware.zip "https://downloads.sourceforge.net/project/oneui-unleashed/A04/No-GApps%2520with%2520Samsung%2520Bloatware%2520Debloated/Odin%2520Flashable/V1.1/A04%2520Clean%2520Debloat.zip"
           
           echo "Extracting base firmware container..."
           unzip -q firmware.zip -d extracted_firmware/
           ls -lah extracted_firmware/
 
-      # 4. تشغيل سكريبت الحقن والتخصيص (GApps Super Lite & Lawnchair)
       - name: Run Customization Script
         run: |
           mkdir -p tools
@@ -37,23 +35,17 @@ jobs:
             chmod +x ./tools/mod_script.sh
             ./tools/mod_script.sh
           else
-            echo "mod_script.sh not found, copying directly..."
-            mkdir -p build_output
-            cp -r extracted_firmware/* build_output/
+            echo "mod_script.sh missing, skipping script..."
           fi
 
-      # 5. تجميع الملفات النهائية في ملف TAR متوافق مع Odin
       - name: Create Odin Package Output
         run: |
-          echo "Packaging final custom ROM..."
+          echo "Packaging extracted firmware into Odin tar..."
           mkdir -p output
-          if [ -d "build_output" ]; then
-            tar -cvf output/CUSTOM_A04_UNLEASHED_LITE.tar -C build_output/ .
-          else
-            tar -cvf output/CUSTOM_A04_UNLEASHED_LITE.tar -C extracted_firmware/ .
-          fi
+          # ضغط محتويات extracted_firmware مباشرة لضمان خروج ملف الـ AP بالحجم الحقيقي الكامل
+          tar -cvf output/AP_CUSTOM_A04_ODIN.tar -C extracted_firmware/ .
+          ls -lah output/
 
-      # 6. رفع الروم النهائي كـ Artifact
       - name: Upload Custom ROM Artifact
         uses: actions/upload-artifact@v4
         with:
