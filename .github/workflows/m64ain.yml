@@ -12,7 +12,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2. تثبيت الأدوات الأساسية على نظام البناء (مع الحزمة الصحيحة للتعامل مع صور النظام)
+      # 2. تثبيت الأدوات الأساسية وحزم التعامل مع صور النظام
       - name: Set up Environment
         run: |
           sudo apt-get update
@@ -20,12 +20,17 @@ jobs:
             git wget curl python3 python3-pip \
             openjdk-17-jdk zip unzip tar cpio android-sdk-libsparse-utils
 
-      # 3. تحميل الروم الرسمي باستخدام الرابط المباشر
+      # 3. تحميل الروم الرسمي مباشرة من Google Drive
       - name: Download Official Firmware
         run: |
-          echo "Starting firmware download..."
+          echo "Starting firmware download from Google Drive..."
           mkdir -p extracted_firmware
-          wget -O firmware.zip "https://download.samfrew.com/8b819f977420629f/aa3ce7221a39063225c39443a592e999e02d977901037adab8c60af7abce34a772b42a992e8a8ba81210779da3113bb537fb510502112e84a5f64e37e75a4fd1d9b8bc9f88ea88cd9a2efe2c93ad68f3bee14ea353cb3b52a116b6d5f18dfc648897227c9b19655ddf4737adae76ac8f2aaf5d981eba4b9c20f6355677935865ff330486d614daeeba0a36ace1a6410c/XID-A045FXXSFEZF1-20260622144851.zip"
+          # استخدام الرابط المباشر الذي قدمته مع تمرير الكوكيز الخاصة بملفات جوجل الكبيرة
+          wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1xszeIGsH1eBctll0mJI7VzVeuDEMgf-f' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1xszeIGsH1eBctll0mJI7VzVeuDEMgf-f" -O firmware.zip || wget -O firmware.zip "https://drive.usercontent.google.com/download?id=1xszeIGsH1eBctll0mJI7VzVeuDEMgf-f&export=download&authuser=0"
+          
+          echo "Checking downloaded file..."
+          ls -lah firmware.zip
+          
           echo "Extracting firmware container..."
           unzip -q firmware.zip -d extracted_firmware/
           ls -lah extracted_firmware/
@@ -34,7 +39,6 @@ jobs:
       - name: Run Modification Script
         run: |
           mkdir -p tools
-          # التأكد من وجود ملف السكريبت وإعطائه صلاحية التنفيذ
           if [ -f "./tools/mod_script.sh" ]; then
             chmod +x ./tools/mod_script.sh
             ./tools/mod_script.sh
