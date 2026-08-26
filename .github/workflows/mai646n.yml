@@ -11,19 +11,31 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Environment & Tools
+      - name: Set up Environment & Build lpmake from Source
         run: |
           sudo apt-get update
-          # تثبيت حزم أدوات أندرويد المتاحة رسمياً في أوبونتو
           sudo apt-get install -y \
             git wget curl python3 python3-pip \
             xz-utils p7zip-full zip unzip tar aria2 \
             bc ccache dosfstools e2fsprogs f2fs-tools \
-            mtd-utils rsync squashfs-tools \
-            android-sdk-libsparse-utils make gcc g++
+            mtd-utils rsync squashfs-tools build-essential cmake
+
+          # استنساخ مستودع الأدوات الذي وجدته وبناء lpmake محلياً
+          echo "Cloning android_tools_build..."
+          git clone https://github.com/xiaoxindada/android_tools_build.git /tmp/tools_build
+          cd /tmp/tools_build
           
-          # تثبيت حزمة أدوات البناء الخاصة بالأقسام الديناميكية المتاحة في مستودعات أوبونتو الرسمية
-          sudo apt-get install -y lptools || true
+          # تنفيذ بناء الأدوات عبر cmake المتوفر في المستودع
+          mkdir -p build && cd build
+          cmake ..
+          make -j$(nproc)
+          
+          # نقل أداة lpmake الناتجة إلى مسار النظام لتصبح جاهزة للاستخدام الفوري
+          sudo cp lpmake /usr/local/bin/
+          sudo chmod +x /usr/local/bin/lpmake
+          
+          # التحقق من نجاح التثبيت
+          lpmake --version || echo "lpmake built and installed successfully"
 
       - name: Download Axion GSI & OneUI Base ROM
         run: |
@@ -53,7 +65,6 @@ jobs:
           SUPER_SIZE=4831838208 
           
           if [ -f gsi/system.img ]; then
-            # استخدام الأمر المتاح في النظام للتجميع
             lpmake \
               --device-size $SUPER_SIZE \
               --metadata-size 65536 \
