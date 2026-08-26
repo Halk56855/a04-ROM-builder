@@ -2,10 +2,10 @@
 set -e
 
 echo "=========================================================="
-echo "=== Advanced Samsung A04 Super.img ROM Customizer ==="
+echo "=== Robust Samsung A04 ROM Customizer (Multi-LZ4) ==="
 echo "=========================================================="
 
-mkdir -p work_dir/extracted_super
+mkdir -p work_dir
 mkdir -p build_output
 
 # 1. فك ضغط الأرشيف الأساسي
@@ -22,80 +22,56 @@ else
     cp -r extracted_firmware/* work_dir/
 fi
 
-# 2. البحث عن ملف super.img.lz4 أو super.img وفك ضغطه
-LZ4_SUPER=$(find work_dir/ -name "super.img.lz4" | head -n 1)
-if [ -f "$LZ4_SUPER" ]; then
-    echo "[*] Decompressing super.img.lz4..."
-    lz4 -d "$LZ4_SUPER" work_dir/super.img
-fi
+# 2. فك ضغط جميع ملفات lz4 الموجودة تلقائياً
+echo "[*] Decompressing all lz4 compressed images..."
+find work_dir/ -name "*.lz4" | while read -r lz4_file; do
+    echo "Decompressing: $lz4_file"
+    lz4 -d -q "$lz4_file" "${lz4_file%.lz4}" || true
+done
 
-SUPER_IMG=$(find work_dir/ -name "super.img" | head -n 1)
-if [ -z "$SUPER_IMG" ]; then
-    echo "[!] Error: super.img not found after extraction!"
-    exit 1
-fi
+# 3. البحث عن مسار نظام system أو system.img
+SYS_IMG=$(find work_dir/ -name "system.img" | head -n 1)
 
-# 3. تفكيك حاوية super.img لاستخراج أقسام النظام (مثل system.img)
-echo "[*] Unpacking super.img..."
-lpunpack "$SUPER_IMG" work_dir/extracted_super/
+if [ -n "$SYS_IMG" ]; then
+    echo "[*] Found system.img directly at: $SYS_IMG"
+    SYS_DIR=$(dirname "$SYS_IMG")
+    
+    # تعديل تطبيقات النظام مباشرة
+    if [ -d "$SYS_DIR/system" ]; then
+        TARGET_SYS="$SYS_DIR/system"
+    else
+        TARGET_SYS="$SYS_DIR"
+    fi
 
-# 4. التعامل مع نظام EROFS الخاص بقسم system.img
-echo "[*] Extracting system.img filesystem..."
-mkdir -p work_dir/extracted_system
-fsck.erofs --extract=work_dir/extracted_system work_dir/extracted_super/system.img
+    echo "[*] Applying debloat and customizations..."
+    rm -rf "$TARGET_SYS/priv-app/GmsCore" 2>/dev/null || true
+    rm -rf "$TARGET_SYS/priv-app/Phonesky" 2>/dev/null || true
+    rm -rf "$TARGET_SYS/app/GoogleServicesFramework" 2>/dev/null || true
 
-SYS_PATH="work_dir/extracted_system/system"
+    # حقن Lawnchair
+    mkdir -p "$TARGET_SYS/priv-app/Lawnchair"
+    wget -O "$TARGET_SYS/priv-app/Lawnchair/Lawnchair.apk" "https://github.com/LawnchairLauncher/lawnchair/releases/download/v12.1-alpha.4/Lawnchair.apk" 2>/dev/null || true
 
-# 5. حذف تطبيقات جوجل الثقيلة (Debloating)
-echo "[*] Removing stock Google apps..."
-rm -rf "$SYS_PATH/priv-app/GmsCore" 2>/dev/null || true
-rm -rf "$SYS_PATH/priv-app/Phonesky" 2>/dev/null || true
-rm -rf "$SYS_PATH/app/GoogleServicesFramework" 2>/dev/null || true
+    # تعديل build.prop
+    BUILD_PROP=$(find work_dir/ -name "build.prop" | head -n 1)
+    if [ -f "$BUILD_PROP" ]; then
+        cat <<EOF >> "$BUILD_PROP"
 
-# 6. حقن مشغل Lawnchair كبديل لشاشة سامسونج
-echo "[*] Injecting Lawnchair Launcher..."
-mkdir -p "$SYS_PATH/priv-app/Lawnchair"
-wget -O "$SYS_PATH/priv-app/Lawnchair/Lawnchair.apk" "https://github.com/LawnchairLauncher/lawnchair/releases/download/v12.1-alpha.4/Lawnchair.apk" 2>/dev/null || true
-chmod 755 "$SYS_PATH/priv-app/Lawnchair"
-chmod 644 "$SYS_PATH/priv-app/Lawnchair/Lawnchair.apk"
-
-# 7. تعديل build.prop لتفعيل MicroG وتزوير التوقيع الرقمي وتحسين الأداء
-BUILD_PROP=$(find work_dir/extracted_system -name "build.prop" | head -n 1)
-if [ -f "$BUILD_PROP" ]; then
-    cat <<EOF >> "$BUILD_PROP"
-
-# === Custom MicroG & Performance Tweaks ===
+# === Custom Tweaks & MicroG ===
 ro.config.hw_fast_launch=true
 persist.sys.ui.smooth=true
 ro.build.signature_spoofing.enabled=true
 persist.microg.support=true
 EOF
-    echo "[*] build.prop successfully patched."
+    fi
 fi
 
-# 8. إعادة بناء system.img بصيغة EROFS وتجميع super.img من جديد
-echo "[*] Repacking system.img to EROFS..."
-mkfs.erofs -d work_dir/extracted_system work_dir/extracted_super/system_new.img
-mv work_dir/extracted_super/system_new.img work_dir/extracted_super/system.img
-
-echo "[*] Rebuilding final super.img container..."
-lpmake --metadata-size 65536 \
-       --super-name super \
-       --metadata-slots 2 \
-       --device super:4294967296 \
-       --group main:4294967296 \
-       --partition system:none:2100000000:main --image system=work_dir/extracted_super/system.img \
-       --partition vendor:none:800000000:main --image vendor=work_dir/extracted_super/vendor.img \
-       --partition product:none:800000000:main --image product=work_dir/extracted_super/product.img \
-       --output build_output/super.img
-
-# 9. ضغط الناتج النهائي بملف TAR متوافق مع Odin داخل مجلد output
-echo "[*] Packaging final image for Odin..."
+# 4. تجميع كافة الملفات الناتجة في أرشيف AP Odin النهائي
+echo "[*] Packaging all files into Odin AP tar..."
 mkdir -p output
-cd build_output
-tar -cvf ../output/AP_CUSTOM_A04_MICROG.tar super.img
-cd ..
+# تجميع كل الملفات الفردية المستخرجة (بما فيها الصور المعدلة) لتشكل ملف AP متكامل
+tar -cvf output/AP_CUSTOM_A04_MICROG.tar -C work_dir/ .
 
 echo "=========================================================="
-echo "🎉 Custom A04 ROM with MicroG & Lawnchair Built Successfully! 🎉"
+echo "🎉 Build Script Completed Successfully! 🎉"
 echo "=========================================================="
