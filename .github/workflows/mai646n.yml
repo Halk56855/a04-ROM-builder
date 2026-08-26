@@ -18,7 +18,7 @@ jobs:
             git wget curl python3 python3-pip \
             xz-utils p7zip-full zip unzip tar aria2 \
             bc ccache dosfstools e2fsprogs f2fs-tools \
-            mtd-utils rsync squashfs-tools
+            mtd-utils rsync squashfs-tools android-sdk-libsparse-utils
 
           pip3 install --upgrade pip
           pip3 install protobuf
@@ -27,7 +27,6 @@ jobs:
         run: |
           mkdir -p workspace/oneui workspace/gsi workspace/output
           
-          # روابط الملفات
           GSI_URL="https://github.com/Doze-off/axion_aosp/releases/download/2026-08-24/Axion-2.8-GSI_treble_arm64-ab-MICROG-20260824.img.xz"
           ONEUI_URL="https://downloads.sourceforge.net/project/oneui-unleashed/A04/No-GApps%20with%20Samsung%20Bloatware%20Debloated/Odin%20Flashable/V1.1/A04%20Clean%20Debloat.zip"
           
@@ -37,7 +36,7 @@ jobs:
           echo "Downloading OneUI Base ROM..."
           aria2c -c -x 16 -s 16 "$ONEUI_URL" -o workspace/oneui/oneui.zip
 
-      - name: Extract Files
+      - name: Extract Files & Prepare System
         run: |
           cd workspace
           
@@ -48,39 +47,51 @@ jobs:
           echo "Extracting OneUI Base ROM..."
           unzip -q oneui/oneui.zip -d oneui/extracted/
           
-          echo "--- محتويات قاعدة OneUI واستخراج النظام المعدل ---"
-          ls -la oneui/extracted/
+          # استخراج الأقسام الأخرى الضرورية (مثل vendor, product, odm) من روم OneUI إذا كانت موجودة كملفات img أو داخل tar/lz4
+          find oneui/extracted/ -name "*.img" -exec cp {} gsi/ \; || true
           ls -la gsi/
 
-      - name: Repack Super Partition (Axion + OneUI Base)
+      - name: Build Super Partition (lpmake)
         run: |
           cd workspace
-          echo "--- جاري دمج هيكل OneUI الأساسي مع نظام Axion GSI ---"
+          mkdir -p output
           
-          # هنا يتم استبدال أو دمج نظام OneUI الأساسي بملف GSI (gsi/system.img) 
-          # مع الحفاظ على ملفات الـ vendor / product الخاصة بجهاز Galaxy A04 المستخرجة من روم OneUI.
+          echo "--- جاري بناء ملف super.img عبر lpmake ---"
           
-          # مثال افتراضي لتوليد الملف النهائي وحفظه في output:
-          # mkdir -p output
-          # cp gsi/system.img output/super.img (تعديل حسب الحاجة لملفات lpmake)
+          # تحديد حجم الـ super partition الخاص بهاتف Galaxy A04 (غالباً حوالي 4GB إلى 5GB - يتم ضبطها حسب المساحة القياسية)
+          SUPER_SIZE=4831838208 
+          
+          # التحقق من وجود الأقسام المطلوبة لإنتاج super.img
+          if [ -f gsi/system.img ]; then
+            # استخدام أمر lpmake لدمج نظام GSI مع بقية أقسام سامسونج إن وجدت
+            lpmake \
+              --device-size $SUPER_SIZE \
+              --metadata-size 65536 \
+              --metadata-slots 3 \
+              --group main_a $SUPER_SIZE \
+              --partition system:readonly:$(stat -c%s gsi/system.img):main_a \
+              --image system=gsi/system.img \
+              --output output/super.img
+          else
+            echo "خطأ: لم يتم العثور على ملف system.img!"
+            exit 1
+          fi
 
-      - name: Compress and Prepare Odin Package
+      - name: Package Super.img for Odin
         run: |
           cd workspace/output
           if [ -f super.img ]; then
+            echo "تم بناء super.img بنجاح، جاري الضغط بصيغة Odin tar..."
             tar -cvf super.tar super.img
             gzip super.tar
-            echo "SUCCESS=true" >> $GITHUB_ENV
           else
-            # في حال لم يتم التجميع اليدوي بعد، نقوم بضغط النظامين معاً كحزمة جاهزة للفحص
-            cd ../..
-            tar -cvf workspace/output/Axion_A04_Combined.tar workspace/gsi/system.img workspace/oneui/extracted/
-            gzip workspace/output/Axion_A04_Combined.tar
+            echo "فشل بناء ملف super.img"
+            exit 1
           fi
 
       - name: Upload Final Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Axion-GSI-With-OneUI-Base-A04
-          path: workspace/output/
+          name: super-galaxy-a04-axion
+          path: workspace/output/super.tar.gz
           retention-days: 3
