@@ -17,24 +17,23 @@ jobs:
           sudo apt-get install -y \
             git wget curl python3 python3-pip \
             openjdk-17-jdk zip unzip tar cpio android-sdk-libsparse-utils
-          # تثبيت أداة gdown الرسمية للتحميل المباشر من جوجل درايف
-          pip3 install gdown
+          pip3 install --upgrade gdown
 
-      # 3. التحميل الآمن والمباشر عبر gdown لتجاوز تحذيرات الحجم
+      # 3. التحميل المباشر عبر تمرير الرابط الكامل لـ gdown
       - name: Download Official Firmware
         run: |
           echo "Starting firmware download from Google Drive using gdown..."
           mkdir -p extracted_firmware
           
-          # استخدام معرف الملف الخاص بك مباشرة مع gdown
-          gdown --id 1xszeIGsH1eBctll0mJI7VzVeuDEMgf-f -O firmware.zip
+          # تمرير رابط جوجل درايف الكامل لتتولى gdown عملية تخطي تحذير الحجم تلقائياً
+          gdown "https://drive.google.com/uc?id=1xszeIGsH1eBctll0mJI7VzVeuDEMgf-f&export=download" -O firmware.zip
           
           echo "Checking downloaded file size..."
           ls -lah firmware.zip
           
           echo "Extracting firmware container..."
           unzip -q firmware.zip -d extracted_firmware/
-          ls -lah extracted_firmware/
+          ls -lah firmware.zip
 
       - name: Run Modification Script
         run: |
