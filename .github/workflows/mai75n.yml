@@ -1,0 +1,86 @@
+name: Build Axion GSI Super with OneUI Base for Galaxy A04
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Environment & Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git wget curl python3 python3-pip \
+            xz-utils p7zip-full zip unzip tar aria2 \
+            bc ccache dosfstools e2fsprogs f2fs-tools \
+            mtd-utils rsync squashfs-tools
+
+          pip3 install --upgrade pip
+          pip3 install protobuf
+
+      - name: Download Axion GSI & OneUI Base ROM
+        run: |
+          mkdir -p workspace/oneui workspace/gsi workspace/output
+          
+          # روابط الملفات
+          GSI_URL="https://github.com/Doze-off/axion_aosp/releases/download/2026-08-24/Axion-2.8-GSI_treble_arm64-ab-MICROG-20260824.img.xz"
+          ONEUI_URL="https://downloads.sourceforge.net/project/oneui-unleashed/A04/No-GApps%20with%20Samsung%20Bloatware%20Debloated/Odin%20Flashable/V1.1/A04%20Clean%20Debloat.zip"
+          
+          echo "Downloading Axion GSI..."
+          aria2c -c -x 16 -s 16 "$GSI_URL" -o workspace/gsi/gsi.img.xz
+          
+          echo "Downloading OneUI Base ROM..."
+          aria2c -c -x 16 -s 16 "$ONEUI_URL" -o workspace/oneui/oneui.zip
+
+      - name: Extract Files
+        run: |
+          cd workspace
+          
+          echo "Extracting Axion GSI..."
+          xz -d gsi/gsi.img.xz
+          mv gsi/gsi.img gsi/system.img
+          
+          echo "Extracting OneUI Base ROM..."
+          unzip -q oneui/oneui.zip -d oneui/extracted/
+          
+          echo "--- محتويات قاعدة OneUI واستخراج النظام المعدل ---"
+          ls -la oneui/extracted/
+          ls -la gsi/
+
+      - name: Repack Super Partition (Axion + OneUI Base)
+        run: |
+          cd workspace
+          echo "--- جاري دمج هيكل OneUI الأساسي مع نظام Axion GSI ---"
+          
+          # هنا يتم استبدال أو دمج نظام OneUI الأساسي بملف GSI (gsi/system.img) 
+          # مع الحفاظ على ملفات الـ vendor / product الخاصة بجهاز Galaxy A04 المستخرجة من روم OneUI.
+          
+          # مثال افتراضي لتوليد الملف النهائي وحفظه في output:
+          # mkdir -p output
+          # cp gsi/system.img output/super.img (تعديل حسب الحاجة لملفات lpmake)
+
+      - name: Compress and Prepare Odin Package
+        run: |
+          cd workspace/output
+          if [ -f super.img ]; then
+            tar -cvf super.tar super.img
+            gzip super.tar
+            echo "SUCCESS=true" >> $GITHUB_ENV
+          else
+            # في حال لم يتم التجميع اليدوي بعد، نقوم بضغط النظامين معاً كحزمة جاهزة للفحص
+            cd ../..
+            tar -cvf workspace/output/Axion_A04_Combined.tar workspace/gsi/system.img workspace/oneui/extracted/
+            gzip workspace/output/Axion_A04_Combined.tar
+          fi
+
+      - name: Upload Final Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Axion-GSI-With-OneUI-Base-A04
+          path: workspace/output/
+          retention-days: 3
