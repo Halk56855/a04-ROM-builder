@@ -1,0 +1,60 @@
+name: Build and Modify Samsung ROM
+
+on:
+  workflow_dispatch: # يسمح بتشغيل البناء يدوياً من تطبيق أو متصفح الهاتف
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. سحب مستودعك الخاص
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2. تثبيت الأدوات الأساسية على نظام البناء (Linux)
+      - name: Set up Environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git wget curl python3 python3-pip \
+            openjdk-17-jdk zip unzip tar cpio simg2img img2simg
+
+      # 3. تحميل الروم الرسمي باستخدام الرابط الذي أرسلته
+      - name: Download Official Firmware
+        run: |
+          echo "Starting firmware download..."
+          mkdir -p extracted_firmware
+          wget -O firmware.zip "https://download.samfrew.com/8b819f977420629f/aa3ce7221a39063225c39443a592e999e02d977901037adab8c60af7abce34a772b42a992e8a8ba81210779da3113bb537fb510502112e84a5f64e37e75a4fd1d9b8bc9f88ea88cd9a2efe2c93ad68f3bee14ea353cb3b52a116b6d5f18dfc648897227c9b19655ddf4737adae76ac8f2aaf5d981eba4b9c20f6355677935865ff330486d614daeeba0a36ace1a6410c/XID-A045FXXSFEZF1-20260622144851.zip"
+          echo "Extracting firmware container..."
+          unzip -q firmware.zip -d extracted_firmware/
+          ls -lah extracted_firmware/
+
+      # 4. تشغيل سكريبت التعديل والتخفيف (Debloat & Tweaks)
+      - name: Run Modification Script
+        run: |
+          mkdir -p tools
+          # التأكد من صلاحية تشغيل السكريبت
+          chmod +x ./tools/mod_script.sh
+          ./tools/mod_script.sh
+
+      # 5. تجميع الملفات النهائية في ملف TAR متوافق مع Odin
+      - name: Create Odin Package Output
+        run: |
+          echo "Packaging modified files..."
+          mkdir -p output
+          # يمكنك تعديل هذا السطر حسب الملفات الناتجة من التعديل
+          if [ -d "build_output" ]; then
+            tar -cvf output/MODIFIED_AP_GalaxyA04.tar -C build_output/ .
+          else
+            echo "Build output directory is missing, packaging extracted files as placeholder."
+            tar -cvf output/MODIFIED_AP_GalaxyA04.tar -C extracted_firmware/ .
+          fi
+
+      # 6. رفع الروم المعدل كـ Artifact لتتمكن من تحميله من هاتفك
+      - name: Upload Modified ROM Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Modified-Samsung-ROM-A04
+          path: output/*.tar
+          retention-days: 3
