@@ -1,39 +1,33 @@
 name: Build and Modify Samsung ROM
 
 on:
-  workflow_dispatch: # يسمح بتشغيل البناء يدوياً من هاتفك
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. سحب مستودعك الخاص
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2. تثبيت الأدوات الأساسية وحزم التعامل مع صور النظام
       - name: Set up Environment
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             git wget curl python3 python3-pip \
             openjdk-17-jdk zip unzip tar cpio android-sdk-libsparse-utils
+          # تثبيت أداة gdown الرسمية للتحميل المباشر من جوجل درايف
+          pip3 install gdown
 
-      # 3. تحميل الروم الرسمي من Google Drive مع تجاوز صفحة التحذير للملفات الكبيرة
+      # 3. التحميل الآمن والمباشر عبر gdown لتجاوز تحذيرات الحجم
       - name: Download Official Firmware
         run: |
-          echo "Starting firmware download from Google Drive..."
+          echo "Starting firmware download from Google Drive using gdown..."
           mkdir -p extracted_firmware
           
-          URL="https://drive.google.com/uc?export=download&id=1xszeIGsH1eBctll0mJI7VzVeuDEMgf-f"
-          CONFIRM=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate "$URL" -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1/p')
-          
-          if [ -z "$CONFIRM" ]; then
-            wget --load-cookies /tmp/cookies.txt --no-check-certificate -O firmware.zip "$URL"
-          else
-            wget --load-cookies /tmp/cookies.txt --no-check-certificate -O firmware.zip "https://drive.google.com/uc?export=download&confirm=$CONFIRM&id=1xszeIGsH1eBctll0mJI7VzVeuDEMgf-f"
-          fi
+          # استخدام معرف الملف الخاص بك مباشرة مع gdown
+          gdown --id 1xszeIGsH1eBctll0mJI7VzVeuDEMgf-f -O firmware.zip
           
           echo "Checking downloaded file size..."
           ls -lah firmware.zip
@@ -42,7 +36,6 @@ jobs:
           unzip -q firmware.zip -d extracted_firmware/
           ls -lah extracted_firmware/
 
-      # 4. تشغيل سكريبت التعديل والتخفيف
       - name: Run Modification Script
         run: |
           mkdir -p tools
@@ -55,7 +48,6 @@ jobs:
             cp -r extracted_firmware/* build_output/
           fi
 
-      # 5. تجميع الملفات النهائية في ملف TAR متوافق مع Odin
       - name: Create Odin Package Output
         run: |
           echo "Packaging modified files..."
@@ -66,7 +58,6 @@ jobs:
             tar -cvf output/MODIFIED_AP_GalaxyA04.tar -C extracted_firmware/ .
           fi
 
-      # 6. رفع الروم المعدل كـ Artifact لتتمكن من تحميله
       - name: Upload Modified ROM Artifact
         uses: actions/upload-artifact@v4
         with:
