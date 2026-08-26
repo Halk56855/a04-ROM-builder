@@ -11,17 +11,24 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Environment & Dependencies
+      - name: Set up Environment & Tools
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             git wget curl python3 python3-pip \
             xz-utils p7zip-full zip unzip tar aria2 \
             bc ccache dosfstools e2fsprogs f2fs-tools \
-            mtd-utils rsync squashfs-tools android-sdk-libsparse-utils
+            mtd-utils rsync squashfs-tools
 
-          pip3 install --upgrade pip
-          pip3 install protobuf
+          # تثبيت أداة lpmake الخاصة بتجميع الأقسام الديناميكية
+          sudo apt-get install -y android-sdk-libsparse-utils || true
+          
+          # طريقة بديلة لتحميل lpmake جاهزة للعمل إذا لم تتوفر في المستودعات
+          if ! command -v lpmake &> /dev/null; then
+            echo "Downloading precompiled lpmake..."
+            wget -q https://github.com/xiaoxindada/aosp_build_action/raw/main/tools/lpmake -O /usr/local/bin/lpmake
+            chmod +x /usr/local/bin/lpmake
+          fi
 
       - name: Download Axion GSI & OneUI Base ROM
         run: |
@@ -36,34 +43,21 @@ jobs:
           echo "Downloading OneUI Base ROM..."
           aria2c -c -x 16 -s 16 "$ONEUI_URL" -o workspace/oneui/oneui.zip
 
-      - name: Extract Files & Prepare System
+      - name: Extract Files
         run: |
           cd workspace
-          
-          echo "Extracting Axion GSI..."
           xz -d gsi/gsi.img.xz
           mv gsi/gsi.img gsi/system.img
-          
-          echo "Extracting OneUI Base ROM..."
           unzip -q oneui/oneui.zip -d oneui/extracted/
-          
-          # استخراج الأقسام الأخرى الضرورية (مثل vendor, product, odm) من روم OneUI إذا كانت موجودة كملفات img أو داخل tar/lz4
-          find oneui/extracted/ -name "*.img" -exec cp {} gsi/ \; || true
-          ls -la gsi/
 
       - name: Build Super Partition (lpmake)
         run: |
           cd workspace
           mkdir -p output
           
-          echo "--- جاري بناء ملف super.img عبر lpmake ---"
-          
-          # تحديد حجم الـ super partition الخاص بهاتف Galaxy A04 (غالباً حوالي 4GB إلى 5GB - يتم ضبطها حسب المساحة القياسية)
           SUPER_SIZE=4831838208 
           
-          # التحقق من وجود الأقسام المطلوبة لإنتاج super.img
           if [ -f gsi/system.img ]; then
-            # استخدام أمر lpmake لدمج نظام GSI مع بقية أقسام سامسونج إن وجدت
             lpmake \
               --device-size $SUPER_SIZE \
               --metadata-size 65536 \
@@ -77,15 +71,13 @@ jobs:
             exit 1
           fi
 
-      - name: Package Super.img for Odin
+      - name: Package Super for Odin
         run: |
           cd workspace/output
           if [ -f super.img ]; then
-            echo "تم بناء super.img بنجاح، جاري الضغط بصيغة Odin tar..."
             tar -cvf super.tar super.img
             gzip super.tar
           else
-            echo "فشل بناء ملف super.img"
             exit 1
           fi
 
