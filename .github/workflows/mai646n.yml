@@ -14,21 +14,16 @@ jobs:
       - name: Set up Environment & Tools
         run: |
           sudo apt-get update
+          # تثبيت حزم أدوات أندرويد المتاحة رسمياً في أوبونتو
           sudo apt-get install -y \
             git wget curl python3 python3-pip \
             xz-utils p7zip-full zip unzip tar aria2 \
             bc ccache dosfstools e2fsprogs f2fs-tools \
-            mtd-utils rsync squashfs-tools
-
-          # تثبيت أداة lpmake الخاصة بتجميع الأقسام الديناميكية
-          sudo apt-get install -y android-sdk-libsparse-utils || true
+            mtd-utils rsync squashfs-tools \
+            android-sdk-libsparse-utils make gcc g++
           
-          # طريقة بديلة لتحميل lpmake جاهزة للعمل إذا لم تتوفر في المستودعات
-          if ! command -v lpmake &> /dev/null; then
-            echo "Downloading precompiled lpmake..."
-            wget -q https://github.com/xiaoxindada/aosp_build_action/raw/main/tools/lpmake -O /usr/local/bin/lpmake
-            chmod +x /usr/local/bin/lpmake
-          fi
+          # تثبيت حزمة أدوات البناء الخاصة بالأقسام الديناميكية المتاحة في مستودعات أوبونتو الرسمية
+          sudo apt-get install -y lptools || true
 
       - name: Download Axion GSI & OneUI Base ROM
         run: |
@@ -58,6 +53,7 @@ jobs:
           SUPER_SIZE=4831838208 
           
           if [ -f gsi/system.img ]; then
+            # استخدام الأمر المتاح في النظام للتجميع
             lpmake \
               --device-size $SUPER_SIZE \
               --metadata-size 65536 \
