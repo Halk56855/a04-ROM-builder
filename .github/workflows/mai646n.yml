@@ -11,7 +11,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Environment & Build lpmake from Source
+      - name: Set up Environment & Build lpmake Properly
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -20,22 +20,29 @@ jobs:
             bc ccache dosfstools e2fsprogs f2fs-tools \
             mtd-utils rsync squashfs-tools build-essential cmake
 
-          # استنساخ مستودع الأدوات الذي وجدته وبناء lpmake محلياً
+          # استنساخ المستودع
           echo "Cloning android_tools_build..."
           git clone https://github.com/xiaoxindada/android_tools_build.git /tmp/tools_build
           cd /tmp/tools_build
           
-          # تنفيذ بناء الأدوات عبر cmake المتوفر في المستودع
           mkdir -p build && cd build
-          cmake ..
+          
+          # 1. بناء aprotoc أولاً كما يطلب النظام
+          echo "Building aprotoc..."
+          cmake .. -DMY_TARGET="aprotoc"
           make -j$(nproc)
           
-          # نقل أداة lpmake الناتجة إلى مسار النظام لتصبح جاهزة للاستخدام الفوري
+          # 2. بناء lpmake بعد توفر أداة aprotoc
+          echo "Building lpmake..."
+          cmake .. -DMY_TARGET="lpmake"
+          make -j$(nproc)
+          
+          # نقل الأداة الناتجة إلى مسار النظام
           sudo cp lpmake /usr/local/bin/
           sudo chmod +x /usr/local/bin/lpmake
           
           # التحقق من نجاح التثبيت
-          lpmake --version || echo "lpmake built and installed successfully"
+          lpmake --version || echo "lpmake is ready"
 
       - name: Download Axion GSI & OneUI Base ROM
         run: |
