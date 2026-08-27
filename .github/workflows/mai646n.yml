@@ -11,37 +11,33 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Environment & Build lpmake Properly
+      - name: Setup Environment & Get lpmake from Mirror
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             git wget curl python3 python3-pip \
             xz-utils p7zip-full zip unzip tar aria2 \
             bc ccache dosfstools e2fsprogs f2fs-tools \
-            mtd-utils rsync squashfs-tools build-essential cmake
+            mtd-utils rsync squashfs-tools android-sdk-libsparse-utils
 
-          # استنساخ المستودع
-          echo "Cloning android_tools_build..."
-          git clone https://github.com/xiaoxindada/android_tools_build.git /tmp/tools_build
-          cd /tmp/tools_build
+          # استنساخ المستودع الذي وجدته للحصول على الملف الجاهز
+          echo "Cloning lpmake mirror repository..."
+          git clone https://github.com/whyshhnuv/lpunpack-lpmake-mirror.git /tmp/lpmake_repo
           
-          mkdir -p build && cd build
+          # نسخ أداة lpmake إلى مسار النظام ومنحها صلاحيات التنفيذ
+          # (عادة تكون داخل مجلد binary أو الجذر حسب هيكلة المستودع)
+          if [ -f /tmp/lpmake_repo/binary/lpmake ]; then
+            sudo cp /tmp/lpmake_repo/binary/lpmake /usr/local/bin/
+          elif [ -f /tmp/lpmake_repo/lpmake ]; then
+            sudo cp /tmp/lpmake_repo/lpmake /usr/local/bin/
+          else
+            # إذا كانت مضغوطة أو في مسار آخر، نبحث عنها وننسخها
+            find /tmp/lpmake_repo -name "lpmake" -exec sudo cp {} /usr/local/bin/ \;
+          fi
           
-          # 1. بناء aprotoc أولاً كما يطلب النظام
-          echo "Building aprotoc..."
-          cmake .. -DMY_TARGET="aprotoc"
-          make -j$(nproc)
-          
-          # 2. بناء lpmake بعد توفر أداة aprotoc
-          echo "Building lpmake..."
-          cmake .. -DMY_TARGET="lpmake"
-          make -j$(nproc)
-          
-          # نقل الأداة الناتجة إلى مسار النظام
-          sudo cp lpmake /usr/local/bin/
           sudo chmod +x /usr/local/bin/lpmake
           
-          # التحقق من نجاح التثبيت
+          # التحقق من عمل الأداة
           lpmake --version || echo "lpmake is ready"
 
       - name: Download Axion GSI & OneUI Base ROM
