@@ -11,7 +11,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Environment & Get lpmake from Mirror
+      - name: Setup Environment & Install lpmake via Repository Script
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -20,24 +20,16 @@ jobs:
             bc ccache dosfstools e2fsprogs f2fs-tools \
             mtd-utils rsync squashfs-tools android-sdk-libsparse-utils
 
-          # استنساخ المستودع الذي وجدته للحصول على الملف الجاهز
-          echo "Cloning lpmake mirror repository..."
-          git clone https://github.com/whyshhnuv/lpunpack-lpmake-mirror.git /tmp/lpmake_repo
+          # 1. استنساخ المستودع بالطريقة الصحيحة الموضحة في README
+          echo "Cloning repository..."
+          git clone https://github.com/whyshhnuv/lpunpack-lpmake-mirror.git /tmp/lpbinary
           
-          # نسخ أداة lpmake إلى مسار النظام ومنحها صلاحيات التنفيذ
-          # (عادة تكون داخل مجلد binary أو الجذر حسب هيكلة المستودع)
-          if [ -f /tmp/lpmake_repo/binary/lpmake ]; then
-            sudo cp /tmp/lpmake_repo/binary/lpmake /usr/local/bin/
-          elif [ -f /tmp/lpmake_repo/lpmake ]; then
-            sudo cp /tmp/lpmake_repo/lpmake /usr/local/bin/
-          else
-            # إذا كانت مضغوطة أو في مسار آخر، نبحث عنها وننسخها
-            find /tmp/lpmake_repo -name "lpmake" -exec sudo cp {} /usr/local/bin/ \;
-          fi
+          # 2. الانتقال إلى مجلد العمل وتنفيذ سكريبت التثبيت
+          cd /tmp/lpbinary
+          chmod +x install.sh
+          sudo bash install.sh
           
-          sudo chmod +x /usr/local/bin/lpmake
-          
-          # التحقق من عمل الأداة
+          # 3. التحقق من عمل الأداة
           lpmake --version || echo "lpmake is ready"
 
       - name: Download Axion GSI & OneUI Base ROM
@@ -66,14 +58,16 @@ jobs:
           mkdir -p output
           
           SUPER_SIZE=4831838208 
+          SYSTEM_SIZE=$(stat -c%s gsi/system.img)
           
           if [ -f gsi/system.img ]; then
             lpmake \
               --device-size $SUPER_SIZE \
               --metadata-size 65536 \
               --metadata-slots 3 \
-              --group main_a $SUPER_SIZE \
-              --partition system:readonly:$(stat -c%s gsi/system.img):main_a \
+              --default-group main_a \
+              --group main_a:$SUPER_SIZE \
+              --partition system:readonly:$SYSTEM_SIZE:main_a \
               --image system=gsi/system.img \
               --output output/super.img
           else
