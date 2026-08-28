@@ -1,0 +1,73 @@
+name: Build AxionOS for Samsung A04
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_variant:
+        description: 'Build Variant (va, gms pico, etc.)'
+        required: true
+        default: 'va'
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Maximize Build Space
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 1024
+          swap-size-mb: 12288
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-bloat: 'true'
+
+      - name: Set up Build Environment
+        run: |
+          sudo apt-get update && sudo apt-get upgrade -y
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses-dev lib32z1-dev libelf-dev liblz4-tool libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zlib1g-dev python3 python-is-python3 unzip zip git-lfs
+
+      - name: Configure Git Identity
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+
+      - name: Initialize AxionOS Source
+        run: |
+          mkdir -p ~/axion
+          cd ~/axion
+          repo init -u https://github.com/AxionAOSP/android.git -b 15 --git-lfs
+          
+          # إضافة مستودعات جهاز Samsung A04 الخاصة بك لملف الـ local_manifests
+          mkdir -p .repo/local_manifests
+          cat << 'EOF' > .repo/local_manifests/a04.xml
+          <?xml version="1.0" encoding="UTF-8"?>
+          <manifest>
+            <project name="A04-Trees-and-ROMs/android_device_samsung_a04" path="device/samsung/a04" remote="github" revision="lineage-22.2" />
+            <project name="A04-Trees-and-ROMs/android_vendor_samsung_a04" path="vendor/samsung/a04" remote="github" revision="lineage-22.2" />
+            <project name="A04-Trees-and-ROMs/android_kernel_samsung_a04" path="kernel/samsung/a04" remote="github" revision="lineage-22.2" />
+          </manifest>
+          EOF
+
+      - name: Sync Source
+        run: |
+          cd ~/axion
+          repo sync -c -j4 --force-sync --no-clone-bundle --no-tags
+
+      - name: Start Compilation
+        run: |
+          cd ~/axion
+          export USE_NINJA=true
+          export NINJA_SUMMARIZE_BUILD=true
+          export BOARD_USES_GENERIC_KERNEL=true
+          export MALLOC_CHECK_=0
+          export SOONG_ALLOW_MISSING_DEPENDENCIES=true
+          export AXION_CPU_SMALL_CORES="0,1,2,3"
+          export AXION_CPU_BIG_CORES="4,5,6,7"
+          source build/envsetup.sh
+          gk -s
+          ax a04 ${{ github.event.inputs.build_variant }} -j2
