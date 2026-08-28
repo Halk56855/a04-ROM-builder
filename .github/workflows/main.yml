@@ -16,10 +16,22 @@ jobs:
       contents: write
 
     steps:
+      - name: Free Up Disk Space
+        run: |
+          echo "=== Freeing up disk space ==="
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          sudo apt-get purge -y azure-cli google-cloud-sdk hhvm llvm-12 firefox google-chrome-stable microsoft-edge-stable powershell
+          sudo apt-get autoremove -y
+          sudo apt-get clean
+          df -h
+
       - name: Maximize Build Space
         uses: easimon/maximize-build-space@master
         with:
-          root-reserve-mb: 1024
+          root-reserve-mb: 2048
           swap-size-mb: 12288
           remove-dotnet: 'true'
           remove-android: 'true'
@@ -28,8 +40,8 @@ jobs:
 
       - name: Set up Build Environment
         run: |
-          sudo apt-get update && sudo apt-get upgrade -y
-          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses-dev lib32z1-dev libelf-dev liblz4-tool libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zlib1g-dev python3 python-is-python3 unzip zip git-lfs
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses-dev lib32z1-dev libelf-dev liblz4-tool libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zlib1g-dev python3 python-is-python3 unzip zip git-lfs
 
       - name: Configure Git Identity
         run: |
@@ -40,9 +52,8 @@ jobs:
         run: |
           mkdir -p ~/axion
           cd ~/axion
-          repo init -u https://github.com/AxionAOSP/android.git -b 15 --git-lfs
+          repo init -u https://github.com/AxionAOSP/android.git -b lineage-22.2 --git-lfs
           
-          # إضافة مستودعات جهاز Samsung A04 الخاصة بك لملف الـ local_manifests
           mkdir -p .repo/local_manifests
           cat << 'EOF' > .repo/local_manifests/a04.xml
           <?xml version="1.0" encoding="UTF-8"?>
