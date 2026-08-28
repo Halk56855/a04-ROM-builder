@@ -16,17 +16,18 @@ jobs:
       contents: write
 
     steps:
-      - name: Free Up Disk Space Aggressively
-        run: |
-          echo "=== Freeing up disk space ==="
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf "/usr/local/share/boost"
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-          sudo apt-get purge -y azure-cli google-cloud-sdk firefox google-chrome-stable microsoft-edge-stable powershell || true
-          sudo apt-get autoremove -y
-          sudo apt-get clean
-          df -h
+      - name: Maximize Build Space
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 1024
+          swap-size-mb: 12288
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-bloat: 'true'
+
+      - name: Verify Available Disk Space
+        run: df -h
 
       - name: Set up Build Environment
         run: |
@@ -44,10 +45,11 @@ jobs:
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
 
-      - name: Initialize AxionOS Source (Shallow)
+      - name: Initialize AxionOS Source on Extended Space
         run: |
-          mkdir -p ~/axion
-          cd ~/axion
+          sudo mkdir -p /mnt/axion
+          sudo chown -R $USER:$USER /mnt/axion
+          cd /mnt/axion
           repo init -u https://github.com/AxionAOSP/android.git -b lineage-22.2 --git-lfs --depth=1
           
           mkdir -p .repo/local_manifests
@@ -60,14 +62,14 @@ jobs:
           </manifest>
           EOF
 
-      - name: Sync Source (Lightweight)
+      - name: Sync Source
         run: |
-          cd ~/axion
+          cd /mnt/axion
           repo sync -c -j8 --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune
 
       - name: Start Compilation
         run: |
-          cd ~/axion
+          cd /mnt/axion
           export USE_NINJA=true
           export NINJA_SUMMARIZE_BUILD=true
           export BOARD_USES_GENERIC_KERNEL=true
