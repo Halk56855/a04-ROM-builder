@@ -43,7 +43,7 @@ jobs:
       - name: Initialize and Sync Source (Ultra Shallow)
         run: |
           mkdir -p ~/axion && cd ~/axion
-          repo init -u https://github.com/AxionAOSP/android.git -b lineage-22.2 --git-lfs --depth=1 --}}{\""
+          repo init -u https://github.com/AxionAOSP/android.git -b lineage-22.2 --git-lfs --depth=1
           
           mkdir -p .repo/local_manifests
           cat << 'EOF' > .repo/local_manifests/a04.xml
