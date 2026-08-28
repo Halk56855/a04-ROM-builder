@@ -16,39 +16,18 @@ jobs:
       contents: write
 
     steps:
-      - name: Extreme Space Cleanup
+      - name: Extreme Minimal Cleanup
         run: |
-          echo "=== Cleaning up all unnecessary tools and caches ==="
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf "/usr/local/share/boost"
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-          sudo rm -rf /opt/hostedtoolcache
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /usr/share/swift
-          sudo apt-get purge -y azure-cli google-cloud-sdk firefox google-chrome-stable microsoft-edge-stable powershell snapd || true
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/android /opt/hostedtoolcache /usr/share/swift
+          sudo apt-get purge -y azure-cli google-cloud-sdk firefox google-chrome-stable microsoft-edge-stable powershell snapd valgrind libreoffice* || true
           sudo apt-get autoremove -y --purge
           sudo apt-get clean
-          docker system prune -a --volumes -f || true
           df -h
 
-      - name: Maximize Build Space
-        uses: easimon/maximize-build-space@master
-        with:
-          root-reserve-mb: 1024
-          swap-size-mb: 16384
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
-          remove-bloat: 'true'
-
-      - name: Verify Disk Space After Maximizing
-        run: df -h
-
-      - name: Set up Minimal Build Environment
+      - name: Set up Minimal Packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses-dev lib32z1-dev libelf-dev liblz4-tool libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zlib1g-dev python3 python-is-python3 unzip zip git-lfs
+          sudo apt-get install -y --no-install-recommends bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses-dev lib32z1-dev libelf-dev liblz4-tool libncurses5-dev libssl-dev libxml2 libxml2-utils lzop rsync schedtool squashfs-tools xsltproc yasm zlib1g-dev python3 python-is-python3 unzip zip git-lfs
 
       - name: Install Repo Tool
         run: |
@@ -56,17 +35,15 @@ jobs:
           sudo curl -s https://storage.googleapis.com/git-repo-downloads/repo > /usr/local/bin/repo
           sudo chmod +x /usr/local/bin/repo
 
-      - name: Configure Git Identity
+      - name: Configure Git
         run: |
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "actions@github.com"
+          git config --global user.name "Builder"
+          git config --global user.email "builder@actions.com"
 
-      - name: Initialize AxionOS Source on Extended Partition
+      - name: Initialize and Sync Source (Ultra Shallow)
         run: |
-          sudo mkdir -p /mnt/axion
-          sudo chown -R $USER:$USER /mnt/axion
-          cd /mnt/axion
-          repo init -u https://github.com/AxionAOSP/android.git -b lineage-22.2 --git-lfs --depth=1
+          mkdir -p ~/axion && cd ~/axion
+          repo init -u https://github.com/AxionAOSP/android.git -b lineage-22.2 --git-lfs --depth=1 --}}{\""
           
           mkdir -p .repo/local_manifests
           cat << 'EOF' > .repo/local_manifests/a04.xml
@@ -78,21 +55,14 @@ jobs:
           </manifest>
           EOF
 
-      - name: Lightweight Source Sync
-        run: |
-          cd /mnt/axion
-          repo sync -c -j8 --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune
+          repo sync -c -j2 --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune
 
-      - name: Start Compilation
+      - name: Compile ROM
         run: |
-          cd /mnt/axion
+          cd ~/axion
           export USE_NINJA=true
-          export NINJA_SUMMARIZE_BUILD=true
-          export BOARD_USES_GENERIC_KERNEL=true
           export MALLOC_CHECK_=0
           export SOONG_ALLOW_MISSING_DEPENDENCIES=true
-          export AXION_CPU_SMALL_CORES="0,1,2,3"
-          export AXION_CPU_BIG_CORES="4,5,6,7"
           source build/envsetup.sh
           gk -s
           ax a04 ${{ github.event.inputs.build_variant }} -j2
