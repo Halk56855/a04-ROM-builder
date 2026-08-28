@@ -38,6 +38,9 @@ jobs:
           remove-haskell: 'true'
           remove-bloat: 'true'
 
+      - name: Check Available Space After Maximizing
+        run: df -h
+
       - name: Set up Build Environment
         run: |
           sudo apt-get update
@@ -54,10 +57,12 @@ jobs:
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
 
-      - name: Initialize AxionOS Source
+      - name: Initialize AxionOS Source on Extra Space
         run: |
-          mkdir -p ~/axion
-          cd ~/axion
+          # استخدام المساحة المضافة (غالباً ما تكون تحت /mnt أو مساحة حرة أكبر)
+          sudo mkdir -p /mnt/axion
+          sudo chown -R $USER:$USER /mnt/axion
+          cd /mnt/axion
           repo init -u https://github.com/AxionAOSP/android.git -b lineage-22.2 --git-lfs
           
           mkdir -p .repo/local_manifests
@@ -70,14 +75,14 @@ jobs:
           </manifest>
           EOF
 
-      - name: Sync Source
+      - name: Sync Source (Optimized for space)
         run: |
-          cd ~/axion
-          repo sync -c -j4 --force-sync --no-clone-bundle --no-tags
+          cd /mnt/axion
+          repo sync -c -j4 --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune
 
       - name: Start Compilation
         run: |
-          cd ~/axion
+          cd /mnt/axion
           export USE_NINJA=true
           export NINJA_SUMMARIZE_BUILD=true
           export BOARD_USES_GENERIC_KERNEL=true
