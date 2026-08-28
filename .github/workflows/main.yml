@@ -16,34 +16,34 @@ jobs:
       contents: write
 
     steps:
-      - name: Extreme Minimal Cleanup
+      - name: Purge Everything Unnecessary
         run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/android /opt/hostedtoolcache /usr/share/swift
-          sudo apt-get purge -y azure-cli google-cloud-sdk firefox google-chrome-stable microsoft-edge-stable powershell snapd valgrind libreoffice* || true
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/android /opt/hostedtoolcache /usr/share/swift /usr/share/miniconda
+          sudo apt-get purge -y azure-cli google-cloud-sdk firefox google-chrome-stable microsoft-edge-stable powershell snapd valgrind libreoffice* mysql* php* postgresql* || true
           sudo apt-get autoremove -y --purge
           sudo apt-get clean
           df -h
 
-      - name: Set up Minimal Packages
+      - name: Install Essential Build Tools Only
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses-dev lib32z1-dev libelf-dev liblz4-tool libncurses5-dev libssl-dev libxml2 libxml2-utils lzop rsync schedtool squashfs-tools xsltproc yasm zlib1g-dev python3 python-is-python3 unzip zip git-lfs
 
-      - name: Install Repo Tool
+      - name: Install Repo
         run: |
           sudo mkdir -p /usr/local/bin
           sudo curl -s https://storage.googleapis.com/git-repo-downloads/repo > /usr/local/bin/repo
           sudo chmod +x /usr/local/bin/repo
 
-      - name: Configure Git
+      - name: Git Config
         run: |
-          git config --global user.name "Builder"
-          git config --global user.email "builder@actions.com"
+          git config --global user.name "A04Builder"
+          git config --global user.email "a04@builder.com"
 
-      - name: Initialize and Sync Source (Ultra Shallow)
+      - name: Micro Sync (Single Depth)
         run: |
           mkdir -p ~/axion && cd ~/axion
-          repo init -u https://github.com/AxionAOSP/android.git -b lineage-22.2 --git-lfs --depth=1
+          repo init -u https://github.com/AxionAOSP/android.git -b lineage-22.2 --git-lfs --depth=1 --no-repo-verify
           
           mkdir -p .repo/local_manifests
           cat << 'EOF' > .repo/local_manifests/a04.xml
@@ -55,9 +55,9 @@ jobs:
           </manifest>
           EOF
 
-          repo sync -c -j2 --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune
+          repo sync -c -j1 --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune
 
-      - name: Compile ROM
+      - name: Compile
         run: |
           cd ~/axion
           export USE_NINJA=true
@@ -65,4 +65,4 @@ jobs:
           export SOONG_ALLOW_MISSING_DEPENDENCIES=true
           source build/envsetup.sh
           gk -s
-          ax a04 ${{ github.event.inputs.build_variant }} -j2
+          ax a04 ${{ github.event.inputs.build_variant }} -j1
