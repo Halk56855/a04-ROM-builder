@@ -16,7 +16,7 @@ jobs:
       contents: write
 
     steps:
-      - name: Free Up Disk Space
+      - name: Free Up Disk Space Aggressively
         run: |
           echo "=== Freeing up disk space ==="
           sudo rm -rf /usr/share/dotnet
@@ -27,19 +27,6 @@ jobs:
           sudo apt-get autoremove -y
           sudo apt-get clean
           df -h
-
-      - name: Maximize Build Space
-        uses: easimon/maximize-build-space@master
-        with:
-          root-reserve-mb: 2048
-          swap-size-mb: 12288
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
-          remove-bloat: 'true'
-
-      - name: Check Available Space After Maximizing
-        run: df -h
 
       - name: Set up Build Environment
         run: |
@@ -57,13 +44,11 @@ jobs:
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
 
-      - name: Initialize AxionOS Source on Extra Space
+      - name: Initialize AxionOS Source (Shallow)
         run: |
-          # استخدام المساحة المضافة (غالباً ما تكون تحت /mnt أو مساحة حرة أكبر)
-          sudo mkdir -p /mnt/axion
-          sudo chown -R $USER:$USER /mnt/axion
-          cd /mnt/axion
-          repo init -u https://github.com/AxionAOSP/android.git -b lineage-22.2 --git-lfs
+          mkdir -p ~/axion
+          cd ~/axion
+          repo init -u https://github.com/AxionAOSP/android.git -b lineage-22.2 --git-lfs --depth=1
           
           mkdir -p .repo/local_manifests
           cat << 'EOF' > .repo/local_manifests/a04.xml
@@ -75,14 +60,14 @@ jobs:
           </manifest>
           EOF
 
-      - name: Sync Source (Optimized for space)
+      - name: Sync Source (Lightweight)
         run: |
-          cd /mnt/axion
-          repo sync -c -j4 --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune
+          cd ~/axion
+          repo sync -c -j8 --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune
 
       - name: Start Compilation
         run: |
-          cd /mnt/axion
+          cd ~/axion
           export USE_NINJA=true
           export NINJA_SUMMARIZE_BUILD=true
           export BOARD_USES_GENERIC_KERNEL=true
