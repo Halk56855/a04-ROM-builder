@@ -16,15 +16,15 @@ jobs:
       contents: write
 
     steps:
-      - name: Purge Everything Unnecessary
+      - name: Extreme Clean Disk
         run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/android /opt/hostedtoolcache /usr/share/swift /usr/share/miniconda
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/android /opt/hostedtoolcache /usr/share/swift /usr/share/miniconda /usr/local/lib/node_modules
           sudo apt-get purge -y azure-cli google-cloud-sdk firefox google-chrome-stable microsoft-edge-stable powershell snapd valgrind libreoffice* mysql* php* postgresql* || true
           sudo apt-get autoremove -y --purge
           sudo apt-get clean
           df -h
 
-      - name: Install Essential Build Tools Only
+      - name: Install Minimal Tools
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses-dev lib32z1-dev libelf-dev liblz4-tool libncurses5-dev libssl-dev libxml2 libxml2-utils lzop rsync schedtool squashfs-tools xsltproc yasm zlib1g-dev python3 python-is-python3 unzip zip git-lfs
@@ -40,7 +40,7 @@ jobs:
           git config --global user.name "A04Builder"
           git config --global user.email "a04@builder.com"
 
-      - name: Micro Sync (LineageOS Base)
+      - name: Initialize and Sync (Slimmed Down)
         run: |
           mkdir -p ~/axion && cd ~/axion
           repo init -u https://github.com/LineageOS/android.git -b lineage-22.2 --git-lfs --depth=1 --no-repo-verify
@@ -49,6 +49,13 @@ jobs:
           cat << 'EOF' > .repo/local_manifests/a04.xml
           <?xml version="1.0" encoding="UTF-8"?>
           <manifest>
+            <!-- استبعاد المجلدات الثقيلة غير الضرورية للإقلاب لتوفير المساحة -->
+            <remove-project name="platform/test/vts" />
+            <remove-project name="platform/test/mts" />
+            <remove-project name="platform/test/robolectric-extensions" />
+            <remove-project name="platform/test/suite_harness" />
+
+            <!-- ملفات جهازك الأساسية -->
             <project name="A04-Trees-and-ROMs/android_device_samsung_a04" path="device/samsung/a04" remote="github" revision="lineage-22.2" />
             <project name="A04-Trees-and-ROMs/android_vendor_samsung_a04" path="vendor/samsung/a04" remote="github" revision="lineage-22.2" />
             <project name="A04-Trees-and-ROMs/android_kernel_samsung_a04" path="kernel/samsung/a04" remote="github" revision="lineage-22.2" />
