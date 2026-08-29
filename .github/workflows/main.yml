@@ -40,10 +40,10 @@ jobs:
           git config --global user.name "A04Builder"
           git config --global user.email "a04@builder.com"
 
-      - name: Micro Sync (Single Depth)
+      - name: Micro Sync (LineageOS Base)
         run: |
           mkdir -p ~/axion && cd ~/axion
-          repo init -u https://github.com/AxionAOSP/android.git -b lineage-22.2 --git-lfs --depth=1 --no-repo-verify
+          repo init -u https://github.com/LineageOS/android.git -b lineage-22.2 --git-lfs --depth=1 --no-repo-verify
           
           mkdir -p .repo/local_manifests
           cat << 'EOF' > .repo/local_manifests/a04.xml
