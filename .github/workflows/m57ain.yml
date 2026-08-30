@@ -9,12 +9,12 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Environment & Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y aria2 cpio python3 python3-pip openjdk-11-jdk wget curl git zip unzip bc bison flex build-essential libssl-dev libstdc++6 lz4 aria2
+          sudo apt-get install -y aria2 cpio python3 python3-pip openjdk-11-jdk wget curl git zip unzip bc bison flex build-essential libssl-dev libstdc++6 lz4
 
       - name: Free Up Disk Space
         run: |
@@ -24,15 +24,15 @@ jobs:
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
           df -h
 
-      - name: Download Base ROM & Port ROM
+      - name: Download Base ROM & Port ROM with Optimized Settings
         run: |
           mkdir -p workspace/INPUT_IMAGES workspace/REPACKED_IMAGES
           
           echo "Downloading Base ROM (Samsung Galaxy A04)..."
-          aria2c -c -x16 "https://drive.usercontent.google.com/download?id=1dtgh65lqqns4N_zHPOi2ZPaUnWWLZzuV&export=download&authuser=0" -d workspace/INPUT_IMAGES -o base.zip
+          aria2c -c -x16 -s16 --max-connection-per-server=16 "https://drive.usercontent.google.com/download?id=1dtgh65lqqns4N_zHPOi2ZPaUnWWLZzuV&export=download&authuser=0" -d workspace/INPUT_IMAGES -o base.zip
           
           echo "Downloading Port ROM (Redmi A2 HyperOS)..."
-          aria2c -c -x16 "https://bigota.d.miui.com/V14.0.44.0.TGOMIXM/water_global_images_V14.0.44.0.TGOMIXM_20251223.0000.00_13.0_a137b8cfcd.tgz" -d workspace/INPUT_IMAGES -o port.tgz
+          aria2c -c -x16 -s16 --max-connection-per-server=16 "https://bigota.d.miui.com/V14.0.44.0.TGOMIXM/water_global_images_V14.0.44.0.TGOMIXM_20251223.0000.00_13.0_a137b8cfcd.tgz" -d workspace/INPUT_IMAGES -o port.tgz
 
       - name: Clone Android Image Tools Kitchen
         run: |
@@ -41,8 +41,7 @@ jobs:
       - name: Run Processing & Unpacking
         run: |
           cd workspace/kitchen
-          # يمكنك كتابة الأوامر الخاصة بتنفيذ الأداة هنا أو تشغيل السكريبت الرئيسي لتفكيك الصور
-          # bash android_image_tools.sh
+          # أوامر معالجة وتفكيك الرومات عبر الأدوات
 
       - name: Pack Final ROM to Flashable ZIP
         run: |
