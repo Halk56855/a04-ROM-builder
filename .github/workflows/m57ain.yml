@@ -50,7 +50,7 @@ jobs:
           zip -r9 Galaxy-A04-HyperOS-Port.zip *
 
       - name: Upload Built ROM Artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Galaxy-A04-HyperOS-Port
           path: workspace/output/*.zip
