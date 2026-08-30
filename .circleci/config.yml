@@ -1,51 +1,31 @@
+# Use the latest 2.1 version of CircleCI pipeline process engine.
+# See: https://circleci.com/docs/reference/configuration-reference/
 version: 2.1
 
+# Define a job to be invoked later in a workflow.
+# See: https://circleci.com/docs/guides/orchestrate/jobs-steps/#jobs-overview & https://circleci.com/docs/reference/configuration-reference/#jobs
 jobs:
-  build_rom:
+  say-hello:
+    # Specify the execution environment. You can specify an image from Docker Hub or use one of our convenience images from CircleCI's Developer Hub.
+    # See: https://circleci.com/docs/guides/execution-managed/executor-intro/ & https://circleci.com/docs/reference/configuration-reference/#executor-job
     docker:
-      - image: cimg/android:2024.04
-    resource_class: large
+      # Specify the version you desire here
+      # See: https://circleci.com/developer/images/image/cimg/base
+      - image: cimg/base:current
+
+    # Add steps to the job
+    # See: https://circleci.com/docs/guides/orchestrate/jobs-steps/#steps-overview & https://circleci.com/docs/reference/configuration-reference/#steps
     steps:
+      # Checkout the code as the first step.
       - checkout
       - run:
-          name: Set Git Identity
-          command: |
-            git config --global user.name "A04Builder"
-            git config --global user.email "a04@builder.com"
-      - run:
-          name: Install Repo Tool
-          command: |
-            sudo mkdir -p /usr/local/bin
-            sudo curl -o /usr/local/bin/repo https://storage.googleapis.com/git-repo-downloads/repo
-            sudo chmod +x /usr/local/bin/repo
-      - run:
-          name: Init and Sync Source
-          command: |
-            mkdir -p ~/axion && cd ~/axion
-            repo init -u https://github.com/AxionAOSP/android.git -b lineage-22.2 --git-lfs --depth=1 --no-repo-verify
-            mkdir -p .repo/local_manifests
-            cat << 'EOF' > .repo/local_manifests/a04.xml
-            <?xml version="1.0" encoding="UTF-8"?>
-            <manifest>
-              <project name="A04-Trees-and-ROMs/android_device_samsung_a04" path="device/samsung/a04" remote="github" revision="lineage-22.2" />
-              <project name="A04-Trees-and-ROMs/android_vendor_samsung_a04" path="vendor/samsung/a04" remote="github" revision="lineage-22.2" />
-              <project name="A04-Trees-and-ROMs/android_kernel_samsung_a04" path="kernel/samsung/a04" remote="github" revision="lineage-22.2" />
-            </manifest>
-            EOF
-            repo sync -c -j4 --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune
-      - run:
-          name: Start Build Process
-          command: |
-            cd ~/axion
-            export USE_NINJA=true
-            export MALLOC_CHECK_=0
-            export SOONG_ALLOW_MISSING_DEPENDENCIES=true
-            source build/envsetup.sh
-            gk -s
-            ax a04 va -j4
+          name: "Say hello"
+          command: "echo Hello, World!"
 
+# Orchestrate jobs using workflows
+# See: https://circleci.com/docs/guides/orchestrate/workflows/ & https://circleci.com/docs/reference/configuration-reference/#workflows
 workflows:
-  version: 2
-  build:
+  say-hello-workflow: # This is the name of the workflow, feel free to change it to better match your workflow.
+    # Inside the workflow, you define the jobs you want to run.
     jobs:
-      - build_rom
+      - say-hello
