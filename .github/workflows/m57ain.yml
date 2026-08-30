@@ -41,12 +41,26 @@ jobs:
       - name: Run Processing & Unpacking
         run: |
           cd workspace/kitchen
-          # أوامر معالجة وتفكيك الرومات عبر الأدوات
+          # منح صلاحيات التنفيذ وتشغيل الأداة لمعالجة الرومات الموجودة في INPUT_IMAGES
+          chmod +x android_image_tools.sh
+          # تنفيذ الأداة (تأكد من اتباع خيارات الأداة أو السكريبت التفاعلي حسب ما تتطلبه)
+          ./android_image_tools.sh || true
+
+      - name: Copy Results to Repacked Folder
+        run: |
+          # نقل الملفات الناتجة من مجلد الأداة إلى مجلد الضغط النهائي للتأكد من عدم وجود مجلد فارغ
+          mkdir -p workspace/REPACKED_IMAGES
+          cp -rf workspace/kitchen/REPACKED_IMAGES/* workspace/REPACKED_IMAGES/ || echo "No files to copy yet"
 
       - name: Pack Final ROM to Flashable ZIP
         run: |
           cd workspace/REPACKED_IMAGES
-          zip -r9 Galaxy-A04-HyperOS-Port.zip *
+          if [ -n "$(ls -A .)" ]; then
+            zip -r9 Galaxy-A04-HyperOS-Port.zip *
+          else
+            echo "Error: Output folder is empty!"
+            exit 1
+          fi
 
       - name: Upload Built ROM Artifacts
         uses: actions/upload-artifact@v4
