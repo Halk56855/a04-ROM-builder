@@ -34,12 +34,12 @@ jobs:
       - run:
           name: Start Build Process
           command: |
-            cd ~/axion
+            cd ~/axion || exit 1
             export USE_NINJA=true
             export MALLOC_CHECK_=0
             export SOONG_ALLOW_MISSING_DEPENDENCIES=true
             source build/envsetup.sh
-            gk -s
+            gk -s || true
             ax a04 va -j4
 
 workflows:
