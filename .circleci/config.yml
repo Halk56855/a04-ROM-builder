@@ -39,8 +39,8 @@ jobs:
             export MALLOC_CHECK_=0
             export SOONG_ALLOW_MISSING_DEPENDENCIES=true
             source build/envsetup.sh
-            gk -s || true
-            ax a04 va -j4
+            lunch axion_a04-userdebug
+            mka bacon -j4
 
 workflows:
   version: 2
