@@ -24,14 +24,12 @@ jobs:
             mkdir -p ~/axion && cd ~/axion
             repo init -u https://github.com/AxionAOSP/android.git -b lineage-22.2 --git-lfs --depth=1 --no-repo-verify
             mkdir -p .repo/local_manifests
-            cat << 'EOF' > .repo/local_manifests/a04.xml
-            <?xml version="1.0" encoding="UTF-8"?>
-            <manifest>
-              <project name="A04-Trees-and-ROMs/android_device_samsung_a04" path="device/samsung/a04" remote="github" revision="lineage-22.2" />
-              <project name="A04-Trees-and-ROMs/android_vendor_samsung_a04" path="vendor/samsung/a04" remote="github" revision="lineage-22.2" />
-              <project name="A04-Trees-and-ROMs/android_kernel_samsung_a04" path="kernel/samsung/a04" remote="github" revision="lineage-22.2" />
-            </manifest>
-            EOF
+            echo '<?xml version="1.0" encoding="UTF-8"?>' > .repo/local_manifests/a04.xml
+            echo '<manifest>' >> .repo/local_manifests/a04.xml
+            echo '  <project name="A04-Trees-and-ROMs/android_device_samsung_a04" path="device/samsung/a04" remote="github" revision="lineage-22.2" />' >> .repo/local_manifests/a04.xml
+            echo '  <project name="A04-Trees-and-ROMs/android_vendor_samsung_a04" path="vendor/samsung/a04" remote="github" revision="lineage-22.2" />' >> .repo/local_manifests/a04.xml
+            echo '  <project name="A04-Trees-and-ROMs/android_kernel_samsung_a04" path="kernel/samsung/a04" remote="github" revision="lineage-22.2" />' >> .repo/local_manifests/a04.xml
+            echo '</manifest>' >> .repo/local_manifests/a04.xml
             repo sync -c -j4 --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune
       - run:
           name: Start Build Process
