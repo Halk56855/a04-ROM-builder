@@ -1,0 +1,56 @@
+name: HyperOS Porting for Galaxy A04 (MT6765)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Environment & Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y aria2 cpio python3 python3-pip openjdk-11-jdk wget curl git zip unzip bc bison flex build-essential libssl-dev libstdc++6
+
+      - name: Free Up Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          df -h
+
+      - name: Download Base ROM & Port ROM
+        run: |
+          mkdir -p workspace/base workspace/port workspace/output
+          
+          echo "Downloading Base ROM (Samsung Galaxy A04)..."
+          aria2c -c -x16 "https://drive.usercontent.google.com/download?id=1dtgh65lqqns4N_zHPOi2ZPaUnWWLZzuV&export=download&authuser=0" -d workspace/base -o base.zip
+          
+          echo "Downloading Port ROM (Redmi A2 - HyperOS/MIUI Fastboot)..."
+          aria2c -c -x16 "https://bigota.d.miui.com/V14.0.44.0.TGOMIXM/water_global_images_V14.0.44.0.TGOMIXM_20251223.0000.00_13.0_a137b8cfcd.tgz" -d workspace/port -o port.tgz
+
+      - name: Clone Porting Kitchen Tool
+        run: |
+          git clone https://github.com/xiaomi-eu-mirror/android_packages_apps_PortTool.git workspace/kitchen
+
+      - name: Run Porting Process
+        run: |
+          cd workspace/kitchen
+          # أوامر الدمج وتعديل الـ Build.prop والتعريفات الخاصة بالهاردوير
+          # python3 main.py ../base ../port
+
+      - name: Pack Final ROM to Flashable ZIP
+        run: |
+          cd workspace/output
+          zip -r9 Galaxy-A04-HyperOS-Port.zip *
+
+      - name: Upload Built ROM Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: Galaxy-A04-HyperOS-Port
+          path: workspace/output/*.zip
