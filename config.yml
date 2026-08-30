@@ -1,0 +1,51 @@
+version: 2.1
+
+jobs:
+  build_rom:
+    docker:
+      - image: cimg/android:2024.04
+    resource_class: large
+    steps:
+      - checkout
+      - run:
+          name: Set Git Identity
+          command: |
+            git config --global user.name "A04Builder"
+            git config --global user.email "a04@builder.com"
+      - run:
+          name: Install Repo Tool
+          command: |
+            sudo mkdir -p /usr/local/bin
+            sudo curl -o /usr/local/bin/repo https://storage.googleapis.com/git-repo-downloads/repo
+            sudo chmod +x /usr/local/bin/repo
+      - run:
+          name: Init and Sync Source
+          command: |
+            mkdir -p ~/axion && cd ~/axion
+            repo init -u https://github.com/AxionAOSP/android.git -b lineage-22.2 --git-lfs --depth=1 --no-repo-verify
+            mkdir -p .repo/local_manifests
+            cat << 'EOF' > .repo/local_manifests/a04.xml
+            <?xml version="1.0" encoding="UTF-8"?>
+            <manifest>
+              <project name="A04-Trees-and-ROMs/android_device_samsung_a04" path="device/samsung/a04" remote="github" revision="lineage-22.2" />
+              <project name="A04-Trees-and-ROMs/android_vendor_samsung_a04" path="vendor/samsung/a04" remote="github" revision="lineage-22.2" />
+              <project name="A04-Trees-and-ROMs/android_kernel_samsung_a04" path="kernel/samsung/a04" remote="github" revision="lineage-22.2" />
+            </manifest>
+            EOF
+            repo sync -c -j4 --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune
+      - run:
+          name: Start Build Process
+          command: |
+            cd ~/axion
+            export USE_NINJA=true
+            export MALLOC_CHECK_=0
+            export SOONG_ALLOW_MISSING_DEPENDENCIES=true
+            source build/envsetup.sh
+            gk -s
+            ax a04 va -j4
+
+workflows:
+  version: 2
+  build:
+    jobs:
+      - build_rom
