@@ -38,17 +38,15 @@ jobs:
         run: |
           git clone https://github.com/ravindu644/Android_Image_Tools.git workspace/kitchen
 
-      - name: Run Processing & Unpacking
+      - name: Run Processing & Unpacking with Root Privileges
         run: |
           cd workspace/kitchen
-          # منح صلاحيات التنفيذ وتشغيل الأداة لمعالجة الرومات الموجودة في INPUT_IMAGES
           chmod +x android_image_tools.sh
-          # تنفيذ الأداة (تأكد من اتباع خيارات الأداة أو السكريبت التفاعلي حسب ما تتطلبه)
-          ./android_image_tools.sh || true
+          # إضافة sudo لتجاوز خطأ صلاحيات الجذر المطلوبة من الأداة
+          sudo ./android_image_tools.sh || true
 
       - name: Copy Results to Repacked Folder
         run: |
-          # نقل الملفات الناتجة من مجلد الأداة إلى مجلد الضغط النهائي للتأكد من عدم وجود مجلد فارغ
           mkdir -p workspace/REPACKED_IMAGES
           cp -rf workspace/kitchen/REPACKED_IMAGES/* workspace/REPACKED_IMAGES/ || echo "No files to copy yet"
 
