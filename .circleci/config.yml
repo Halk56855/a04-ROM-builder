@@ -38,8 +38,11 @@ jobs:
             export USE_NINJA=true
             export MALLOC_CHECK_=0
             export SOONG_ALLOW_MISSING_DEPENDENCIES=true
+            export KEYS_DIR="$HOME/android-keys"
+            export LINEAGE_SIGNING_KEYS_DIR="$HOME/android-keys"
+            mkdir -p "$HOME/android-keys"
             source build/envsetup.sh
-            breakfast a04 userdebug
+            lunch axion_a04-userdebug
             mka bacon -j4
 
 workflows:
