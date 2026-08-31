@@ -17,7 +17,7 @@ jobs:
           sudo apt-get install -y axel cpio python3 python3-pip openjdk-11-jdk wget curl git zip unzip bc bison flex build-essential libssl-dev libstdc++6 lz4 android-sdk-libsparse-utils pv libfuse3-dev f2fs-tools fuse2fs attr autoconf automake libtool pkg-config liblz4-dev libselinux1-dev
           sudo pip3 install --upgrade pip
           
-          # سحب أحدث إصدار v1.9.4 من erofs-utils الظاهر في صورك وبنائه يدوياً
+          # تثبيت erofs-utils v1.9.4
           git clone --branch v1.9.4 https://github.com/erofs/erofs-utils.git /tmp/erofs-utils
           cd /tmp/erofs-utils
           ./autogen.sh
@@ -37,22 +37,27 @@ jobs:
         run: |
           mkdir -p workspace/INPUT_IMAGES workspace/REPACKED_IMAGES
           
-          echo "Downloading Base ROM (Samsung Galaxy A04) at Warp Speed..."
+          echo "Downloading Base ROM (Samsung Galaxy A04)..."
           axel -n 32 -a -o workspace/INPUT_IMAGES/base.zip "https://drive.usercontent.google.com/download?id=1dtgh65lqqns4N_zHPOi2ZPaUnWWLZzuV&export=download&authuser=0" || wget -O workspace/INPUT_IMAGES/base.zip "https://drive.usercontent.google.com/download?id=1dtgh65lqqns4N_zHPOi2ZPaUnWWLZzuV&export=download&authuser=0"
           
-          echo "Downloading Port ROM (Redmi A2 HyperOS) at Warp Speed..."
+          echo "Downloading Port ROM (Redmi A2 HyperOS)..."
           axel -n 32 -a -o workspace/INPUT_IMAGES/port.tgz "https://bigota.d.miui.com/V14.0.44.0.TGOMIXM/water_global_images_V14.0.44.0.TGOMIXM_20251223.0000.00_13.0_a137b8cfcd.tgz" || wget -O workspace/INPUT_IMAGES/port.tgz "https://bigota.d.miui.com/V14.0.44.0.TGOMIXM/water_global_images_V14.0.44.0.TGOMIXM_20251223.0000.00_13.0_a137b8cfcd.tgz"
 
       - name: Clone Android Image Tools Kitchen
         run: |
           git clone https://github.com/ravindu644/Android_Image_Tools.git workspace/kitchen
+          # نقل الرومات المحملة إلى مجلد INPUTS الخاص بالأداة مباشرة
+          mkdir -p workspace/kitchen/INPUT_IMAGES
+          cp -f workspace/INPUT_IMAGES/base.zip workspace/kitchen/INPUT_IMAGES/ 2>/dev/null || true
+          cp -f workspace/INPUT_IMAGES/port.tgz workspace/kitchen/INPUT_IMAGES/ 2>/dev/null || true
 
-      - name: Run Processing & Unpacking with Root Privileges
+      - name: Run Processing Non-Interactively
         run: |
           cd workspace/kitchen
           chmod +x android_image_tools.sh
           export TERM=xterm
-          sudo -E ./android_image_tools.sh || true
+          # إرسال التسلسل التلقائي بالأرقام (مثلاً اختيار تفكيك ثم بورت ثم خروج) لمنع تجمد القائمة
+          printf "1\n1\n" | sudo -E ./android_image_tools.sh || true
 
       - name: Copy Results to Repacked Folder
         run: |
