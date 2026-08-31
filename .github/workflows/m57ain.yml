@@ -14,7 +14,8 @@ jobs:
       - name: Set up Environment & Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y aria2 cpio python3 python3-pip openjdk-11-jdk wget curl git zip unzip bc bison flex build-essential libssl-dev libstdc++6 lz4
+          # تثبيت الحزم المطلوبة خصيصاً لأداة Android_Image_Tools
+          sudo apt-get install -y aria2 cpio python3 python3-pip openjdk-11-jdk wget curl git zip unzip bc bison flex build-essential libssl-dev libstdc++6 lz4 android-sdk-libsparse-utils pv libfuse3-dev f2fs-tools fuse2fs attr erofs-utils
 
       - name: Free Up Disk Space
         run: |
@@ -42,8 +43,9 @@ jobs:
         run: |
           cd workspace/kitchen
           chmod +x android_image_tools.sh
-          # إضافة sudo لتجاوز خطأ صلاحيات الجذر المطلوبة من الأداة
-          sudo ./android_image_tools.sh || true
+          # تمرير متغير البيئة لتجنب خطأ الـ terminal
+          export TERM=xterm
+          sudo -E ./android_image_tools.sh || true
 
       - name: Copy Results to Repacked Folder
         run: |
