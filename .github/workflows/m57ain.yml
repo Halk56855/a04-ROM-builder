@@ -14,8 +14,9 @@ jobs:
       - name: Set up Environment & Dependencies
         run: |
           sudo apt-get update
-          # تثبيت الحزم المطلوبة خصيصاً لأداة Android_Image_Tools
           sudo apt-get install -y aria2 cpio python3 python3-pip openjdk-11-jdk wget curl git zip unzip bc bison flex build-essential libssl-dev libstdc++6 lz4 android-sdk-libsparse-utils pv libfuse3-dev f2fs-tools fuse2fs attr erofs-utils
+          # التأكد من توفر مسارات أدوات الـ erofs وتثبيت إضافات بايثون إن وجدت
+          sudo pip3 install --upgrade pip
 
       - name: Free Up Disk Space
         run: |
@@ -43,8 +44,8 @@ jobs:
         run: |
           cd workspace/kitchen
           chmod +x android_image_tools.sh
-          # تمرير متغير البيئة لتجنب خطأ الـ terminal
           export TERM=xterm
+          # تعديل الملف مؤقتاً لتخطي فحص النواقص إذا استمر في رفض التثبيت، أو تشغيله بصلاحيات كاملة
           sudo -E ./android_image_tools.sh || true
 
       - name: Copy Results to Repacked Folder
