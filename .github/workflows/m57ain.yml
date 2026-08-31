@@ -15,7 +15,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y aria2 cpio python3 python3-pip openjdk-11-jdk wget curl git zip unzip bc bison flex build-essential libssl-dev libstdc++6 lz4 android-sdk-libsparse-utils pv libfuse3-dev f2fs-tools fuse2fs attr erofs-utils
-          # التأكد من توفر مسارات أدوات الـ erofs وتثبيت إضافات بايثون إن وجدت
           sudo pip3 install --upgrade pip
 
       - name: Free Up Disk Space
@@ -26,15 +25,15 @@ jobs:
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
           df -h
 
-      - name: Download Base ROM & Port ROM with Optimized Settings
+      - name: Download ROMs at Extreme Speed
         run: |
           mkdir -p workspace/INPUT_IMAGES workspace/REPACKED_IMAGES
           
-          echo "Downloading Base ROM (Samsung Galaxy A04)..."
-          aria2c -c -x16 -s16 --max-connection-per-server=16 "https://drive.usercontent.google.com/download?id=1dtgh65lqqns4N_zHPOi2ZPaUnWWLZzuV&export=download&authuser=0" -d workspace/INPUT_IMAGES -o base.zip
+          echo "Downloading Base ROM (Samsung Galaxy A04) at Max Speed..."
+          aria2c -c -x32 -s32 --max-connection-per-server=32 --split=32 --min-split-size=1M "https://drive.usercontent.google.com/download?id=1dtgh65lqqns4N_zHPOi2ZPaUnWWLZzuV&export=download&authuser=0" -d workspace/INPUT_IMAGES -o base.zip
           
-          echo "Downloading Port ROM (Redmi A2 HyperOS)..."
-          aria2c -c -x16 -s16 --max-connection-per-server=16 "https://bigota.d.miui.com/V14.0.44.0.TGOMIXM/water_global_images_V14.0.44.0.TGOMIXM_20251223.0000.00_13.0_a137b8cfcd.tgz" -d workspace/INPUT_IMAGES -o port.tgz
+          echo "Downloading Port ROM (Redmi A2 HyperOS) at Max Speed..."
+          aria2c -c -x32 -s32 --max-connection-per-server=32 --split=32 --min-split-size=1M "https://bigota.d.miui.com/V14.0.44.0.TGOMIXM/water_global_images_V14.0.44.0.TGOMIXM_20251223.0000.00_13.0_a137b8cfcd.tgz" -d workspace/INPUT_IMAGES -o port.tgz
 
       - name: Clone Android Image Tools Kitchen
         run: |
@@ -45,7 +44,6 @@ jobs:
           cd workspace/kitchen
           chmod +x android_image_tools.sh
           export TERM=xterm
-          # تعديل الملف مؤقتاً لتخطي فحص النواقص إذا استمر في رفض التثبيت، أو تشغيله بصلاحيات كاملة
           sudo -E ./android_image_tools.sh || true
 
       - name: Copy Results to Repacked Folder
