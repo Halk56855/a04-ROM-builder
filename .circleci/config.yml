@@ -43,7 +43,7 @@ jobs:
             export KEYS_DIR="$HOME/android-keys"
             export LINEAGE_SIGNING_KEYS_DIR="$HOME/android-keys"
             mkdir -p "$HOME/android-keys"
-            mka bacon -j4
+            mka KEYS_DIR="$HOME/android-keys" LINEAGE_SIGNING_KEYS_DIR="$HOME/android-keys" bacon -j4
 
 workflows:
   version: 2
