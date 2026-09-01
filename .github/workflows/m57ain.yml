@@ -11,8 +11,10 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Create Swap Memory (Prevents Runner Crash / Out of Memory)
+      - name: Create Swap Memory Safely
         run: |
+          sudo swapoff /swapfile || true
+          sudo rm -f /swapfile
           sudo fallocate -l 4G /swapfile
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
@@ -24,8 +26,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y axel cpio python3 python3-pip openjdk-11-jdk wget curl git zip unzip bc bison flex build-essential libssl-dev libstdc++6 lz4 android-sdk-libsparse-utils pv libfuse3-dev f2fs-tools fuse2fs attr autoconf automake libtool pkg-config liblz4-dev libselinux1-dev
           sudo pip3 install --upgrade pip
-          
-          # تثبيت erofs-utils السريع دون إثقال الـ RAM
           sudo apt-get install -y erofs-utils || true
 
       - name: Free Up Disk Space
