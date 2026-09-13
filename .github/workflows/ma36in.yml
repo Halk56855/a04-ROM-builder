@@ -1,0 +1,90 @@
+name: Build Evolution X Android 13 for Samsung A04
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Maximize Build Disk Space
+        uses: easimon/maximize-build-space@v10
+        with:
+          root-reserve-mb: 1024
+          swap-size-mb: 8192
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+          remove-docker-images: 'true'
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32z1-dev libelf-dev liblz4-tool libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zip zlib1g-dev python3 python-is-python3
+
+      - name: Install Repo Tool
+        run: |
+          mkdir -p ~/bin
+          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+          chmod a+x ~/bin/repo
+          echo "$HOME/bin" >> $GITHUB_PATH
+
+      - name: Configure Git Identity
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+
+      - name: Initialize and Sync Evolution X Android 13 Source
+        run: |
+          mkdir -p ~/evo
+          cd ~/evo
+          repo init -u https://github.com/Evolution-X/manifest -b tiramisu --git-lfs
+          repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune -j$(nproc --all)
+
+      - name: Clone Device, Vendor, and Kernel Trees
+        run: |
+          cd ~/evo
+          # سحب الفرع الافتراضي مباشرة لتجنب خطأ عدم توفر الفرع
+          git clone https://github.com/A04-Trees-and-ROMs/android_device_samsung_a04.git device/samsung/a04
+          git clone https://github.com/A04-Trees-and-ROMs/android_vendor_samsung_a04.git vendor/samsung/a04
+          git clone https://github.com/Halk56855/kernel_samsung_wingtech.git -b android-4.19-stable kernel/samsung/a04
+
+      - name: Set up Environment and Build ROM
+        run: |
+          cd ~/evo
+          source build/envsetup.sh
+          lunch evolution_a04-userdebug
+          mka evolution -j$(nproc --all)
+
+      - name: Upload to Telegram and GoFile
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: "6899540935"
+        run: |
+          ZIP_FILE=$(ls ~/evo/out/target/product/a04/*.zip 2>/dev/null || true)
+          if [ -n "$ZIP_FILE" ] && [ -f "$ZIP_FILE" ]; then
+              echo "جاري رفع الروم إلى تليجرام..."
+              curl -F "chat_id=$CHAT_ID" -F "document=@$ZIP_FILE" https://api.telegram.org/bot$BOT_TOKEN/sendDocument
+              
+              echo "جاري الرفع إلى GoFile..."
+              GOFILE_SERVER=$(curl -s https://api.gofile.io/servers | grep -o '"name":"[^"]*"' | head -n 1 | cut -d'"' -f4)
+              if [ -n "$GOFILE_SERVER" ]; then
+                  curl -F "file=@$ZIP_FILE" https://${GOFILE_SERVER}.gofile.io/contents/uploadfile
+              fi
+          else
+              echo "خطأ: لم يتم العثور على ملف الـ ZIP الناتج!"
+              exit 1
+          fi
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "evo-13-${{ github.run_id }}"
+          name: "Evolution X Android 13 A04 Build ${{ github.run_id }}"
+          files: ~/evo/out/target/product/a04/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
