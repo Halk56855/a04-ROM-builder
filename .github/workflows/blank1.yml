@@ -1,59 +1,32 @@
-name: Build LineageOS for Galaxy A04
+name: Build WitAqua ROM for Samsung A04
 
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Free Up Disk Space (Aggressive)
-        run: |
-          echo "Cleaning up heavy pre-installed packages and tools..."
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf "/usr/local/share/boost"
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/android
-          sudo rm -rf /opt/hostedtoolcache
-          sudo rm -rf /usr/share/swift
-          sudo rm -rf /usr/local/julia
-          sudo rm -rf /usr/local/lib/node_modules
-          sudo rm -rf /usr/share/sbt
-          sudo rm -rf /usr/share/ant
-          # حذف صور وتجهيزات Docker لتوفير مساحة هائلة
-          docker system prune -a --volumes -f || true
-          echo "Available disk space after cleanup:"
-          df -h
-
-      - name: Set up Native Swap Space (16GB)
-        run: |
-          echo "Setting up 16GB swap space safely..."
-          sudo swapoff /swapfile 2>/dev/null || true
-          sudo rm -f /swapfile
-          sudo dd if=/dev/zero of=/swapfile bs=1M count=16384 status=progress
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
-          echo "Swap space created successfully:"
-          free -h
+      - name: Maximize Build Disk Space
+        uses: easimon/maximize-build-space@v10
+        with:
+          root-reserve-mb: 1024
+          swap-size-mb: 8192
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+          remove-docker-images: 'true'
 
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            bc bison build-essential ccache curl flex g++-multilib \
-            gcc-multilib git gnupg gperf imagemagick lib32readline-dev \
-            lib32z1-dev liblz4-tool libncurses-dev libncurses6 \
-            libsdl1.2-dev libssl-dev libxml2 libxml2-utils \
-            lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm \
-            zip zlib1g-dev openjdk-17-jdk python3
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32z1-dev libelf-dev liblz4-tool libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zip zlib1g-dev python3 python-is-python3
 
-      - name: Set up Repo Tool
+      - name: Install Repo Tool
         run: |
           mkdir -p ~/bin
           curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
@@ -62,24 +35,56 @@ jobs:
 
       - name: Configure Git Identity
         run: |
-          git config --global user.name "ROM Builder"
-          git config --global user.email "builder@rom.local"
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
 
-      - name: Initialize and Sync Source (Optimized for Space)
+      - name: Initialize and Sync WitAqua Manifest Source
         run: |
-          mkdir -p workspace
-          cd workspace
-          # استخدام --depth=1 لتجنب تحميل التاريخ الضخم للسورس وتوفير مساحة هائلة
-          repo init -u https://github.com/LineageOS/android.git -b lineage-23.2 --depth=1 --git-lfs
-          repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --depth=1 -j8
+          mkdir -p ~/witaqua
+          cd ~/witaqua
+          repo init -u https://github.com/WitAqua/manifest.git -b 17.0 --git-lfs
+          repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune -j$(nproc --all)
 
-      - name: Start Building LineageOS
+      - name: Clone Device, Vendor, and Kernel Trees
         run: |
-          cd workspace
-          export USE_CCACHE=1
-          export CCACHE_EXEC=/usr/bin/ccache
-          ccache -M 5G
-          export ALLOW_MISSING_DEPENDENCIES=true
+          cd ~/witaqua
+          # سحب تعريفات الجهاز والمورد والنواة الجديدة الخاصة بك
+          git clone https://github.com/A04-Trees-and-ROMs/android_device_samsung_a04.git device/samsung/a04
+          git clone https://github.com/A04-Trees-and-ROMs/android_vendor_samsung_a04.git vendor/samsung/a04
+          git clone https://github.com/A04-Trees-and-ROMs/android_kernel_samsung_a04.git kernel/samsung/a04
+
+      - name: Set up Environment and Build ROM
+        run: |
+          cd ~/witaqua
           source build/envsetup.sh
-          lunch lineage_a04-userdebug
-          mka bacon -j8
+          lunch witaqua_a04-userdebug
+          mka bacon -j$(nproc --all)
+
+      - name: Upload to Telegram and GoFile
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: "6899540935"
+        run: |
+          ZIP_FILE=$(ls ~/witaqua/out/target/product/a04/*.zip 2>/dev/null || true)
+          if [ -n "$ZIP_FILE" ] && [ -f "$ZIP_FILE" ]; then
+              echo "جاري رفع الروم إلى تليجرام..."
+              curl -F "chat_id=$CHAT_ID" -F "document=@$ZIP_FILE" https://api.telegram.org/bot$BOT_TOKEN/sendDocument
+              
+              echo "جاري الرفع إلى GoFile..."
+              GOFILE_SERVER=$(curl -s https://api.gofile.io/servers | grep -o '"name":"[^"]*"' | head -n 1 | cut -d'"' -f4)
+              if [ -n "$GOFILE_SERVER" ]; then
+                  curl -F "file=@$ZIP_FILE" https://${GOFILE_SERVER}.gofile.io/contents/uploadfile
+              fi
+          else
+              echo "خطأ: لم يتم العثور على ملف الـ ZIP الناتج!"
+              exit 1
+          fi
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "witaqua-17.0-${{ github.run_id }}"
+          name: "WitAqua ROM A04 Build ${{ github.run_id }}"
+          files: ~/witaqua/out/target/product/a04/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
