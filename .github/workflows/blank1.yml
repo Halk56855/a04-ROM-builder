@@ -1,4 +1,4 @@
-name: Build WitAqua ROM for Samsung A04
+name: Build WitAqua ROM 15.2 for Samsung A04
 
 on:
   workflow_dispatch:
@@ -38,17 +38,17 @@ jobs:
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
 
-      - name: Initialize and Sync WitAqua Manifest Source
+      - name: Initialize and Sync WitAqua Manifest Source (Branch 15.2)
         run: |
           mkdir -p ~/witaqua
           cd ~/witaqua
-          repo init -u https://github.com/WitAqua/manifest.git -b 17.0 --git-lfs
+          # استخدام الفرع 15.2 بدلاً من 17.0
+          repo init -u https://github.com/WitAqua/manifest.git -b 15.2 --git-lfs
           repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune -j$(nproc --all)
 
       - name: Clone Device, Vendor, and Kernel Trees
         run: |
           cd ~/witaqua
-          # سحب تعريفات الجهاز والمورد والنواة الجديدة الخاصة بك
           git clone https://github.com/A04-Trees-and-ROMs/android_device_samsung_a04.git device/samsung/a04
           git clone https://github.com/A04-Trees-and-ROMs/android_vendor_samsung_a04.git vendor/samsung/a04
           git clone https://github.com/A04-Trees-and-ROMs/android_kernel_samsung_a04.git kernel/samsung/a04
@@ -83,8 +83,8 @@ jobs:
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "witaqua-17.0-${{ github.run_id }}"
-          name: "WitAqua ROM A04 Build ${{ github.run_id }}"
+          tag_name: "witaqua-15.2-${{ github.run_id }}"
+          name: "WitAqua ROM 15.2 A04 Build ${{ github.run_id }}"
           files: ~/witaqua/out/target/product/a04/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
