@@ -1,4 +1,4 @@
-name: Build WitAqua ROM 15.2 Ultra-Lite for Samsung A04
+name: Build WitAqua ROM 15.2 Ultimate Lite for Samsung A04
 
 on:
   workflow_dispatch:
@@ -10,11 +10,11 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - name: Maximize Build Disk Space
+      - name: Maximize Build Disk Space (Aggressive)
         uses: easimon/maximize-build-space@v10
         with:
-          root-reserve-mb: 512
-          swap-size-mb: 2048
+          root-reserve-mb: 256
+          swap-size-mb: 1024
           remove-dotnet: 'true'
           remove-android: 'true'
           remove-haskell: 'true'
@@ -23,19 +23,31 @@ jobs:
           remove-swift: 'true'
           remove-perfetto: 'true'
 
-      - name: Aggressive Space Cleanup
+      - name: Ultimate Disk Cleanup (Remove Everything Unnecessary)
         run: |
+          echo "=== المساحة المتاحة قبل التنظيف الشامل ==="
+          df -h
+          sudo apt-get purge -y azure-cli google-cloud-cli microsoft-edge-stable firefox hhvm google-chrome-stable sqlite3 || true
+          sudo apt-get autoremove -y
+          sudo apt-get clean
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /opt/ghc
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /usr/local/share/powershell
           sudo rm -rf /usr/share/swift
+          sudo rm -rf /usr/local/julia
+          sudo rm -rf /opt/pip
+          sudo rm -rf /opt/az
+          sudo rm -rf /usr/lib/llvm*
+          sudo rm -rf /var/lib/apt/lists/*
+          sudo rm -rf ~/.cache
+          echo "=== المساحة المتاحة بعد التنظيف الشامل ==="
           df -h
 
-      - name: Install Build Dependencies
+      - name: Install Essential Build Dependencies Only
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32z1-dev libelf-dev liblz4-tool libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zip zlib1g-dev python3 python-is-python3
+          sudo apt-get install -y --no-install-recommends bc bison build-essential curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32z1-dev libelf-dev liblz4-tool libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zip zlib1g-dev python3 python-is-python3
 
       - name: Install Repo Tool
         run: |
@@ -49,12 +61,12 @@ jobs:
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
 
-      - name: Initialize and Sync Ultra-Lite Source
+      - name: Initialize and Sync Absolute Lite Source
         run: |
           mkdir -p ~/witaqua
           cd ~/witaqua
           repo init -u https://github.com/WitAqua/manifest.git -b 15.2 --depth=1 --git-lfs
-          repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune -j$(nproc --all)
+          repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync -j$(nproc --all)
 
       - name: Clone Device, Vendor, and Kernel Trees (Shallow)
         run: |
@@ -63,10 +75,9 @@ jobs:
           git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_vendor_samsung_a04.git vendor/samsung/a04
           git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_kernel_samsung_a04.git kernel/samsung/a04
 
-      - name: Set up Environment and Build ROM (No Ccache)
+      - name: Set up Environment and Build ROM
         run: |
           cd ~/witaqua
-          # إيقاف الـ Ccache لمنع استهلاك مساحة القرص
           export USE_CCACHE=0
           source build/envsetup.sh
           lunch witaqua_a04-userdebug
@@ -95,8 +106,8 @@ jobs:
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "witaqua-15.2-ultralite-${{ github.run_id }}"
-          name: "WitAqua ROM 15.2 Ultra-Lite A04 Build ${{ github.run_id }}"
+          tag_name: "witaqua-15.2-ultimate-${{ github.run_id }}"
+          name: "WitAqua ROM 15.2 Ultimate Lite A04 Build ${{ github.run_id }}"
           files: ~/witaqua/out/target/product/a04/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
