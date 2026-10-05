@@ -31,6 +31,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y wget p7zip-full tar unzip file curl \
           build-essential cmake ninja-build libprotobuf-dev protobuf-compiler \
+          libfmt-dev libbrotli-dev libzstd-dev liblz4-dev libgtest-dev \
           android-sdk-libsparse-utils android-sdk-platform-tools-common
 
     - name: Download & Build lpmake From Source Archive
@@ -43,7 +44,6 @@ jobs:
         cd android-tools-src
         mkdir build && cd build
         
-        # تعطيل بناء أدوات adb/fastboot لتفادي مشاكل المكتبات والبناء السريع لـ lpmake فقط
         cmake .. -GNinja \
           -DBUILD_SHARED_LIBS=OFF \
           -DANDROID_TOOLS_BUILD_BUILD=OFF \
