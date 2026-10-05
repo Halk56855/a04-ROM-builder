@@ -32,7 +32,7 @@ jobs:
         sudo apt-get install -y wget p7zip-full tar unzip file curl \
           build-essential cmake ninja-build libprotobuf-dev protobuf-compiler \
           libfmt-dev libbrotli-dev libzstd-dev liblz4-dev libgtest-dev \
-          libusb-1.0-0-dev libpcre2-dev pkg-config e2fsprogs \
+          libusb-1.0-0-dev libpcre2-dev pkg-config e2fsprogs erofs-utils \
           android-sdk-libsparse-utils android-sdk-platform-tools-common
 
     - name: Download & Build lpmake From Source Archive
@@ -85,19 +85,37 @@ jobs:
           mv "$VENDOR_IMG" vendor_input.img
         fi
 
-    - name: Convert to RAW and Shrink Filesystem
+    - name: Process, Unpack EROFS, and Shrink
       run: |
-        echo "Converting system image to RAW format..."
+        echo "Converting system image to RAW if sparse..."
         simg2img system_input.img system_raw.img 2>/dev/null || mv system_input.img system_raw.img
         rm -f system_input.img
 
-        echo "Checking and shrinking system_raw.img..."
-        e2fsck -y -f system_raw.img || true
-        resize2fs -M system_raw.img || true
+        FS_TYPE=$(file -b system_raw.img | awk '{print $1}')
+        echo "Detected system filesystem: $FS_TYPE"
 
-        echo "Converting back to sparse system.img..."
-        img2simg system_raw.img system.img
-        rm -f system_raw.img
+        if [ "$FS_TYPE" = "EROFS" ] || file system_raw.img | grep -qi "erofs"; then
+          echo "Unpacking EROFS image to ext4..."
+          mkdir -p sys_dump
+          fsck.erofs --extract=sys_dump system_raw.img || dump.erofs -e sys_dump system_raw.img || true
+          rm -f system_raw.img
+          
+          # إنشاء صورة ext4 بحجم مطابق وتعبئتها
+          make_ext4fs -l 3500M -s system.img sys_dump/ 2>/dev/null || {
+            echo "Fallback to mkfs.ext4..."
+            truncate -s 3500M system_raw.img
+            mkfs.ext4 -F -d sys_dump system_raw.img
+            img2simg system_raw.img system.img
+            rm -f system_raw.img
+          }
+          rm -rf sys_dump
+        else
+          echo "Running standard ext4 check and resize..."
+          e2fsck -y -f system_raw.img || true
+          resize2fs -M system_raw.img || true
+          img2simg system_raw.img system.img
+          rm -f system_raw.img
+        fi
 
         if [ -f vendor_input.img ]; then
           echo "Processing vendor image..."
