@@ -1,0 +1,86 @@
+name: Build Samsung Super Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      gsi_url:
+        description: 'رابط تنزيل الملف المباشر (Direct Download URL)'
+        required: true
+        type: string
+      super_size:
+        description: 'حجم قسم super بالبايت (الافتراضي للهاتف ~3.5GB)'
+        required: true
+        default: '3758096384'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Install Dependencies & Tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y android-sdk-libsparse-utils android-sdk-platform-tools-common wget p7zip-full tar unzip file
+
+    - name: Download and Process Input File
+      run: |
+        echo "Downloading file from provided URL..."
+        wget -O downloaded_file "${{ github.event.inputs.gsi_url }}"
+        
+        FILE_TYPE=$(file downloaded_file)
+        echo "File type detected: $FILE_TYPE"
+        
+        if echo "$FILE_TYPE" | grep -q "Zip archive"; then
+          echo "Extracting ZIP archive..."
+          unzip downloaded_file -d extracted/
+          SYS_FILE=$(find extracted/ -type f -name "*.img" | head -n 1)
+          if [ -n "$SYS_FILE" ]; then
+            mv "$SYS_FILE" system.img
+          else
+            echo "No .img file found inside ZIP!" && exit 1
+          fi
+        elif echo "$FILE_TYPE" | grep -q "XZ compressed"; then
+          echo "Extracting XZ archive..."
+          mv downloaded_file file.xz
+          xz -d file.xz
+          mv file system.img
+        else
+          echo "Using raw IMG file..."
+          mv downloaded_file system.img
+        fi
+
+    - name: Download lpmake Tool
+      run: |
+        wget https://github.com/phhusson/vendor_hardware_overlay/releases/download/v1.0/lpmake -O lpmake
+        chmod +x lpmake
+
+    - name: Build super.img
+      run: |
+        IMG_SIZE=$(stat -c%s system.img)
+        SUPER_SIZE=${{ github.event.inputs.super_size }}
+        
+        echo "System Image Size: $IMG_SIZE"
+        echo "Target Super Size: $SUPER_SIZE"
+        
+        ./lpmake \
+          --metadata-size 65536 \
+          --super-name super \
+          --metadata-slots 2 \
+          --device super:$SUPER_SIZE \
+          --group main:$SUPER_SIZE \
+          --partition system:readonly:$IMG_SIZE:main \
+          --image system=system.img \
+          --output super.img
+
+    - name: Pack super.img to .tar (For Odin)
+      run: |
+        tar -cvf super.tar super.img
+
+    - name: Upload Processed File
+      uses: actions/upload-artifact@v4
+      with:
+        name: Samsung-Super-TAR
+        path: super.tar
