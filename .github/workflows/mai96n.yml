@@ -21,10 +21,20 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Install Dependencies & Tools
+    - name: Install Dependencies and Android Tools
       run: |
         sudo apt-get update
-        sudo apt-get install -y android-sdk-libsparse-utils android-sdk-platform-tools-common wget p7zip-full tar unzip file
+        sudo apt-get install -y android-sdk-libsparse-utils android-sdk-platform-tools-common wget p7zip-full tar unzip file android-sdk-libsparse-dev android-tools-fsutils
+        
+        # تثبيت أداة lpmake مباشرة من حزمة android-tools الرسمية في أوبونتو
+        sudo apt-get install -y android-tools-mkbootimg android-sdk-platform-tools || true
+        
+        # إذا لم تتوفر في apt يتم تنزيل النسخة المعتمدة من مستودع phhusson الأساسي المباشر
+        if ! command -v lpmake &> /dev/null; then
+          wget https://github.com/phhusson/vendor_hardware_overlay/blob/pie/lpmake?raw=true -O lpmake || \
+          wget https://raw.githubusercontent.com/phhusson/vendor_hardware_overlay/pie/lpmake -O lpmake
+          chmod +x lpmake
+        fi
 
     - name: Download and Process Input File
       run: |
@@ -53,13 +63,6 @@ jobs:
           mv downloaded_file system.img
         fi
 
-    - name: Download Reliable lpmake Binary
-      run: |
-        # تنزيل أداة lpmake من مصدر موثوق وشغال 100%
-        wget https://github.com/unix312/system_tools/raw/main/lpmake -O lpmake || \
-        wget https://raw.githubusercontent.com/IghorJulio/lpmake-prebuilt/main/lpmake -O lpmake
-        chmod +x lpmake
-
     - name: Build super.img
       run: |
         IMG_SIZE=$(stat -c%s system.img)
@@ -68,7 +71,9 @@ jobs:
         echo "System Image Size: $IMG_SIZE"
         echo "Target Super Size: $SUPER_SIZE"
         
-        ./lpmake \
+        LPMAKE_EXEC=$(command -v lpmake || echo "./lpmake")
+        
+        $LPMAKE_EXEC \
           --metadata-size 65536 \
           --super-name super \
           --metadata-slots 2 \
