@@ -75,36 +75,36 @@ jobs:
         
         GSI_IMG=$(find extracted_gsi/ -type f -name "*.img" | head -n 1)
         if [ -n "$GSI_IMG" ]; then
-          mv "$GSI_IMG" system_raw.img
+          mv "$GSI_IMG" system_input.img
         else
           echo "Error: system.img not found in GSI ZIP!" && exit 1
         fi
         
         VENDOR_IMG=$(find extracted_stock/ -type f -name "vendor.img" | head -n 1)
         if [ -n "$VENDOR_IMG" ]; then
-          mv "$VENDOR_IMG" vendor_raw.img
+          mv "$VENDOR_IMG" vendor_input.img
         fi
 
-    - name: Shrink RAW Filesystem Images
+    - name: Convert to RAW and Shrink Filesystem
       run: |
-        echo "Checking and shrinking system_raw.img filesystem size..."
+        echo "Converting system image to RAW format..."
+        simg2img system_input.img system_raw.img 2>/dev/null || mv system_input.img system_raw.img
+        rm -f system_input.img
+
+        echo "Checking and shrinking system_raw.img..."
         e2fsck -y -f system_raw.img || true
-        resize2fs -M system_raw.img
-        
-        if [ -f vendor_raw.img ]; then
-          echo "Checking and shrinking vendor_raw.img filesystem size..."
-          e2fsck -y -f vendor_raw.img || true
-          resize2fs -M vendor_raw.img
-        fi
+        resize2fs -M system_raw.img || true
 
-    - name: Convert Images to Sparse Format
-      run: |
-        echo "Converting system_raw.img to sparse format..."
+        echo "Converting back to sparse system.img..."
         img2simg system_raw.img system.img
         rm -f system_raw.img
-        
-        if [ -f vendor_raw.img ]; then
-          echo "Converting vendor_raw.img to sparse format..."
+
+        if [ -f vendor_input.img ]; then
+          echo "Processing vendor image..."
+          simg2img vendor_input.img vendor_raw.img 2>/dev/null || mv vendor_input.img vendor_raw.img
+          rm -f vendor_input.img
+          e2fsck -y -f vendor_raw.img || true
+          resize2fs -M vendor_raw.img || true
           img2simg vendor_raw.img vendor.img
           rm -f vendor_raw.img
         fi
