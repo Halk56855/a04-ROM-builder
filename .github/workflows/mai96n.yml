@@ -85,7 +85,7 @@ jobs:
           mv "$VENDOR_IMG" vendor_input.img
         fi
 
-    - name: Mount, Extract & Build Tight ext4 Image
+    - name: Mount, Debloat & Re-pack Tight ext4
       run: |
         echo "Converting system image to RAW format..."
         simg2img system_input.img system_raw.img 2>/dev/null || mv system_input.img system_raw.img
@@ -95,7 +95,7 @@ jobs:
         
         echo "Mounting raw image..."
         sudo mount -o loop,ro system_raw.img /tmp/sys_mount || {
-          echo "Standard mount failed. Trying erofs mount..."
+          echo "Trying erofs mount..."
           sudo mount -t erofs -o loop system_raw.img /tmp/sys_mount
         }
 
@@ -104,13 +104,27 @@ jobs:
         sudo umount /tmp/sys_mount
         rm -f system_raw.img
 
-        echo "Calculating minimum directory size..."
+        echo "--- STARTING AGGRESSIVE DEBLOAT ---"
+        # حذف التطبيقات والخدمات الثقيلة غير الأساسية لتوفير مساحة كافية
+        sudo rm -rf /tmp/sys_dump/system/app/YouTube /tmp/sys_dump/app/YouTube
+        sudo rm -rf /tmp/sys_dump/system/app/Chrome /tmp/sys_dump/app/Chrome
+        sudo rm -rf /tmp/sys_dump/system/priv-app/Velvet /tmp/sys_dump/priv-app/Velvet # Google App
+        sudo rm -rf /tmp/sys_dump/system/product/app/*
+        sudo rm -rf /tmp/sys_dump/product/app/*
+        sudo rm -rf /tmp/sys_dump/system/product/priv-app/GooglePlayServices /tmp/sys_dump/product/priv-app/GmsCore
+        sudo rm -rf /tmp/sys_dump/system/tts /tmp/sys_dump/tts
+        
+        # تنظيف أية ملفات ترجمات أو تطبيقات ثانوية أخرى
+        sudo find /tmp/sys_dump/ -type d -name "Bixby*" -exec rm -rf {} + 2>/dev/null || true
+        sudo find /tmp/sys_dump/ -type d -name "SamsungPay*" -exec rm -rf {} + 2>/dev/null || true
+        echo "--- DEBLOAT COMPLETED ---"
+
+        echo "Calculating new directory size..."
         DIR_SIZE_KB=$(sudo du -sk /tmp/sys_dump | awk '{print $1}')
-        # إضافة هامش أمان 5% فقط فوق الحجم الفعلي
-        TARGET_SIZE_KB=$(( DIR_SIZE_KB + (DIR_SIZE_KB * 5 / 100) ))
+        TARGET_SIZE_KB=$(( DIR_SIZE_KB + (DIR_SIZE_KB * 3 / 100) ))
         TARGET_SIZE_BYTES=$(( TARGET_SIZE_KB * 1024 ))
         
-        echo "Target raw ext4 size: $TARGET_SIZE_BYTES bytes ($(( TARGET_SIZE_KB / 1024 )) MB)"
+        echo "New raw ext4 size: $TARGET_SIZE_BYTES bytes ($(( TARGET_SIZE_KB / 1024 )) MB)"
 
         echo "Creating new tight ext4 image..."
         truncate -s ${TARGET_SIZE_BYTES} system_new_raw.img
