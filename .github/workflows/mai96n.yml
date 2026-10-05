@@ -35,12 +35,16 @@ jobs:
 
     - name: Build Standalone lpmake Executable
       run: |
+        echo "Configuring Git Identity for CMake Patching..."
+        git config --global user.email "builder@github.com"
+        git config --global user.name "GitHub Builder"
+
         echo "Building lpmake directly from system source..."
         git clone --depth 1 https://github.com/nmeum/android-tools.git
         cd android-tools
         mkdir build && cd build
-        cmake .. -GNinja -DBUILD_SHARED_LIBS=OFF -DANDROID_TOOLS_BUILD_LPMAKE=ON
-        ninja lpmake || ninja
+        cmake .. -GNinja -DBUILD_SHARED_LIBS=OFF
+        ninja lpmake
         
         LP_PATH=$(find . -name "lpmake" -type f | head -n 1)
         if [ -n "$LP_PATH" ]; then
