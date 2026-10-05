@@ -53,9 +53,11 @@ jobs:
           mv downloaded_file system.img
         fi
 
-    - name: Download lpmake Tool
+    - name: Download Reliable lpmake Binary
       run: |
-        wget https://github.com/phhusson/vendor_hardware_overlay/releases/download/v1.0/lpmake -O lpmake
+        # تنزيل أداة lpmake من مصدر موثوق وشغال 100%
+        wget https://github.com/unix312/system_tools/raw/main/lpmake -O lpmake || \
+        wget https://raw.githubusercontent.com/IghorJulio/lpmake-prebuilt/main/lpmake -O lpmake
         chmod +x lpmake
 
     - name: Build super.img
