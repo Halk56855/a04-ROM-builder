@@ -26,21 +26,25 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Install Dependencies and Android Tools
+    - name: Install System Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y wget p7zip-full tar unzip file curl android-sdk-libsparse-utils android-sdk-platform-tools-common android-tools-bin || \
-        sudo apt-get install -y android-tools-fsutils || true
+        sudo apt-get install -y wget p7zip-full tar unzip file curl android-sdk-libsparse-utils android-sdk-platform-tools-common
 
-    - name: Ensure Reliable lpmake Executable
+    - name: Download Verified lpmake Binary
       run: |
-        if command -v lpmake &> /dev/null; then
-          echo "lpmake found in system PATH."
-        else
-          echo "Downloading verified lpmake standalone binary..."
-          curl -sL "https://github.com/phuss/super_image_dumper/releases/download/v1.0.0/lpmake" -o lpmake
-          chmod +x lpmake
+        echo "Downloading reliable lpmake executable from otatools release..."
+        curl -sL "https://github.com/kalilocal/otatools/raw/main/bin/lpmake" -o lpmake || \
+        curl -sL "https://github.com/carlitoxx-dev/otatools_binaries/raw/master/lpmake" -o lpmake
+        
+        chmod +x lpmake
+        
+        # التأكد من أن الملف ليس صفحة HTML
+        if file lpmake | grep -q "text"; then
+          echo "Error: Downloaded file is HTML or text, not binary!"
+          exit 1
         fi
+        echo "lpmake binary verified successfully."
 
     - name: Download Stock ROM and GSI
       run: |
@@ -59,23 +63,26 @@ jobs:
         
         GSI_IMG=$(find extracted_gsi/ -type f -name "*.img" | head -n 1)
         if [ -n "$GSI_IMG" ]; then
-          mv "$GSI_IMG" system.img
+          mv "$GSI_IMG" system_raw.img
         else
           echo "Error: system.img not found in GSI ZIP!" && exit 1
         fi
         
         VENDOR_IMG=$(find extracted_stock/ -type f -name "vendor.img" | head -n 1)
         if [ -n "$VENDOR_IMG" ]; then
-          mv "$VENDOR_IMG" vendor.img
+          mv "$VENDOR_IMG" vendor_raw.img
         fi
 
-    - name: Convert to Sparse Image if Needed
+    - name: Convert Images to Sparse Format
       run: |
-        # تحويل system.img إلى sparse لتصغير الحجم وسهولة التجميع
-        if command -v img2simg &> /dev/null; then
-          echo "Converting system.img to sparse format..."
-          img2simg system.img system_sparse.img
-          mv system_sparse.img system.img
+        echo "Converting system_raw.img to sparse format..."
+        img2simg system_raw.img system.img
+        rm -f system_raw.img
+        
+        if [ -f vendor_raw.img ]; then
+          echo "Converting vendor_raw.img to sparse format..."
+          img2simg vendor_raw.img vendor.img
+          rm -f vendor_raw.img
         fi
 
     - name: Build Combined super.img
@@ -83,13 +90,14 @@ jobs:
         SYS_SIZE=$(stat -c%s system.img)
         SUPER_SIZE=${{ github.event.inputs.super_size }}
         
-        LPMAKE_EXEC=$(command -v lpmake || echo "./lpmake")
+        echo "Calculated system.img sparse size: $SYS_SIZE bytes"
         
-        ARG_COMMAND="$LPMAKE_EXEC --metadata-size 65536 --super-name super --metadata-slots 2 --device super:$SUPER_SIZE --group main:$SUPER_SIZE"
+        ARG_COMMAND="./lpmake --metadata-size 65536 --super-name super --metadata-slots 2 --device super:$SUPER_SIZE --group main:$SUPER_SIZE"
         ARG_COMMAND="$ARG_COMMAND --partition system:readonly:$SYS_SIZE:main --image system=system.img"
         
         if [ -f vendor.img ]; then
           VEN_SIZE=$(stat -c%s vendor.img)
+          echo "Calculated vendor.img sparse size: $VEN_SIZE bytes"
           ARG_COMMAND="$ARG_COMMAND --partition vendor:readonly:$VEN_SIZE:main --image vendor=vendor.img"
         fi
         
