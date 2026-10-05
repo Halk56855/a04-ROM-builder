@@ -1,4 +1,4 @@
-namename: Build Samsung Super Image
+name: Build Samsung Super Image
 
 on:
   workflow_dispatch:
