@@ -9,9 +9,9 @@ on:
         default: 'https://downloads.sourceforge.net/project/oneui-unleashed/A04/No-GApps%20with%20Samsung%20Bloatware%20Debloated/Odin%20Flashable/V1.1/A04%20Clean%20Debloat.zip'
         type: string
       gsi_url:
-        description: 'رابط ملف الـ GSI (AxisGSI)'
+        description: 'رابط ملف الـ GSI الجديد (OneUI 7 / SM-A057F)'
         required: true
-        default: 'https://downloads.sourceforge.net/project/axisgsiupdates/oneui/oneui-15-A055FXXSFDZD1-25.05.2026-AxisGSI.zip?ts=gAAAAABqwwTTYnvge0Qa_STXBEpe31fBxu6BR2MACtv3r2fKi0j3YlW_Fm1fVwS30GcKSxXtxjTRL0QbiAmJpKDl6jTE1tI5_w%3D%3D&use_mirror=master&r=android-app%3A%2F%2Forg.telegram.plus%2F'
+        default: 'https://downloads.sourceforge.net/project/axisgsiupdates/oneui/OneUI7-15-a05s-A057FXXSADYH1-15062026-AxisGSI.zip?ts=gAAAAABqw7hLqDoJFMEYiPorerO2l7xKgYBBaAw7R6KIF4ratCBb3rHhGynVZADvzezc8y-ng9FGlbBy_e8YD32pc5GgqVugCQ%3D%3D&use_mirror=excellmedia&r=android-app%3A%2F%2Forg.telegram.plus%2F'
         type: string
       super_size:
         description: 'حجم قسم super بالبايت (3.91 GiB = 4198481920)'
@@ -63,7 +63,7 @@ jobs:
         echo "Downloading Stock ROM..."
         wget -q --show-progress -O stock_file.zip "${{ github.event.inputs.stock_rom_url }}"
         
-        echo "Downloading AxisGSI..."
+        echo "Downloading AxisGSI OneUI 7..."
         wget -q --show-progress -O gsi_file.zip "${{ github.event.inputs.gsi_url }}"
 
     - name: Unpack and Extract Images
@@ -71,7 +71,7 @@ jobs:
         mkdir -p extracted_stock extracted_gsi
         
         unzip -q stock_file.zip -d extracted_stock/
-        unzip -q gsi_file.zip -d extracted_gsi/
+        unzip -q gsi_file.zip -d extracted_gsi/ || 7z x gsi_file.zip -oextracted_gsi/
         
         GSI_IMG=$(find extracted_gsi/ -type f -name "*.img" | head -n 1)
         if [ -n "$GSI_IMG" ]; then
@@ -85,7 +85,7 @@ jobs:
           mv "$VENDOR_IMG" vendor_input.img
         fi
 
-    - name: Mount, Debloat & Re-pack Tight ext4
+    - name: Mount, Light Debloat & Re-pack Tight ext4
       run: |
         echo "Converting system image to RAW format..."
         simg2img system_input.img system_raw.img 2>/dev/null || mv system_input.img system_raw.img
@@ -104,20 +104,13 @@ jobs:
         sudo umount /tmp/sys_mount
         rm -f system_raw.img
 
-        echo "--- STARTING AGGRESSIVE DEBLOAT ---"
-        # حذف التطبيقات والخدمات الثقيلة غير الأساسية لتوفير مساحة كافية
-        sudo rm -rf /tmp/sys_dump/system/app/YouTube /tmp/sys_dump/app/YouTube
-        sudo rm -rf /tmp/sys_dump/system/app/Chrome /tmp/sys_dump/app/Chrome
-        sudo rm -rf /tmp/sys_dump/system/priv-app/Velvet /tmp/sys_dump/priv-app/Velvet # Google App
-        sudo rm -rf /tmp/sys_dump/system/product/app/*
-        sudo rm -rf /tmp/sys_dump/product/app/*
-        sudo rm -rf /tmp/sys_dump/system/product/priv-app/GooglePlayServices /tmp/sys_dump/product/priv-app/GmsCore
-        sudo rm -rf /tmp/sys_dump/system/tts /tmp/sys_dump/tts
-        
-        # تنظيف أية ملفات ترجمات أو تطبيقات ثانوية أخرى
-        sudo find /tmp/sys_dump/ -type d -name "Bixby*" -exec rm -rf {} + 2>/dev/null || true
-        sudo find /tmp/sys_dump/ -type d -name "SamsungPay*" -exec rm -rf {} + 2>/dev/null || true
-        echo "--- DEBLOAT COMPLETED ---"
+        echo "--- STARTING LIGHT DEBLOAT ---"
+        # إزالة التطبيقات الثقيلة لتقليص الـ 480MB الفائضة
+        sudo rm -rf /tmp/sys_dump/system/app/YouTube /tmp/sys_dump/app/YouTube 2>/dev/null || true
+        sudo rm -rf /tmp/sys_dump/system/app/Chrome /tmp/sys_dump/app/Chrome 2>/dev/null || true
+        sudo rm -rf /tmp/sys_dump/system/priv-app/Velvet /tmp/sys_dump/priv-app/Velvet 2>/dev/null || true
+        sudo rm -rf /tmp/sys_dump/system/product/app/YouTube /tmp/sys_dump/product/app/Chrome 2>/dev/null || true
+        echo "--- LIGHT DEBLOAT COMPLETED ---"
 
         echo "Calculating new directory size..."
         DIR_SIZE_KB=$(sudo du -sk /tmp/sys_dump | awk '{print $1}')
