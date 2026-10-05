@@ -26,23 +26,24 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Install System Dependencies
+    - name: Install System Dependencies & Build Tools
       run: |
         sudo apt-get update
-        sudo apt-get install -y android-sdk-libsparse-utils android-sdk-platform-tools-common wget p7zip-full tar unzip file curl python3-pip python3-setuptools
+        sudo apt-get install -y android-sdk-libsparse-utils android-sdk-platform-tools-common \
+          wget p7zip-full tar unzip file curl cmake ninja-build build-essential \
+          libsparse-dev libprotobuf-dev protobuf-compiler libbase-dev libgtest-dev
 
-    - name: Install lpmake Binary via PIP
+    - name: Build lpmake Native Binary
       run: |
-        # تثبيت أداة otatools التي تتضمن lpmake بشكل جاهز
-        pip3 install --break-system-packages android-otatools || pip3 install android-otatools
-        
-        # التأكد من عمل الأداة
-        if ! command -v lpmake &> /dev/null; then
-          echo "Fallback: Downloading pre-compiled lpmake executable"
-          wget -q https://github.com/phuss/super_image_dumper/releases/download/v1.0.0/lpmake -O lpmake || \
-          wget -q https://raw.githubusercontent.com/seba-ubuntu/7th_Heaven_Installer/master/bin/lpmake -O lpmake
-          chmod +x lpmake
-        fi
+        echo "Cloning and building lpmake natively..."
+        git clone --recursive https://github.com/nmeum/android-tools.git
+        cd android-tools
+        mkdir build && cd build
+        cmake .. -GNinja -DBUILD_SHARED_LIBS=OFF
+        ninja lpmake
+        cp vendor/lpmake ../../lpmake || find . -name "lpmake" -exec cp {} ../../lpmake \;
+        cd ../..
+        chmod +x lpmake
 
     - name: Download Stock ROM and GSI
       run: |
@@ -76,9 +77,7 @@ jobs:
         SYS_SIZE=$(stat -c%s system.img)
         SUPER_SIZE=${{ github.event.inputs.super_size }}
         
-        LPMAKE_EXEC=$(command -v lpmake || echo "./lpmake")
-        
-        ARG_COMMAND="$LPMAKE_EXEC --metadata-size 65536 --super-name super --metadata-slots 2 --device super:$SUPER_SIZE --group main:$SUPER_SIZE"
+        ARG_COMMAND="./lpmake --metadata-size 65536 --super-name super --metadata-slots 2 --device super:$SUPER_SIZE --group main:$SUPER_SIZE"
         ARG_COMMAND="$ARG_COMMAND --partition system:readonly:$SYS_SIZE:main --image system=system.img"
         
         if [ -f vendor.img ]; then
