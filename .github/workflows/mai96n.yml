@@ -29,14 +29,20 @@ jobs:
     - name: Install System Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y android-sdk-libsparse-utils android-sdk-platform-tools-common wget p7zip-full tar unzip file curl
+        sudo apt-get install -y android-sdk-libsparse-utils android-sdk-platform-tools-common wget p7zip-full tar unzip file curl python3-pip python3-setuptools
 
-    - name: Get lpmake Binary
+    - name: Install lpmake Binary via PIP
       run: |
-        wget -q https://github.com/nmeum/android-tools/releases/download/34.0.5/android-tools-34.0.5-linux.tar.xz -O android-tools.tar.xz
-        tar -xf android-tools.tar.xz
-        cp android-tools-34.0.5-linux/lpmake ./lpmake || find . -name "lpmake" -exec cp {} ./lpmake \;
-        chmod +x lpmake
+        # تثبيت أداة otatools التي تتضمن lpmake بشكل جاهز
+        pip3 install --break-system-packages android-otatools || pip3 install android-otatools
+        
+        # التأكد من عمل الأداة
+        if ! command -v lpmake &> /dev/null; then
+          echo "Fallback: Downloading pre-compiled lpmake executable"
+          wget -q https://github.com/phuss/super_image_dumper/releases/download/v1.0.0/lpmake -O lpmake || \
+          wget -q https://raw.githubusercontent.com/seba-ubuntu/7th_Heaven_Installer/master/bin/lpmake -O lpmake
+          chmod +x lpmake
+        fi
 
     - name: Download Stock ROM and GSI
       run: |
@@ -50,13 +56,9 @@ jobs:
       run: |
         mkdir -p extracted_stock extracted_gsi
         
-        # استخراج الروم الأصلي/المعدل
         unzip -q stock_file.zip -d extracted_stock/
-        
-        # استخراج الـ GSI
         unzip -q gsi_file.zip -d extracted_gsi/
         
-        # اختيار نظام الـ GSI كقسم system
         GSI_IMG=$(find extracted_gsi/ -type f -name "*.img" | head -n 1)
         if [ -n "$GSI_IMG" ]; then
           mv "$GSI_IMG" system.img
@@ -64,7 +66,6 @@ jobs:
           echo "Error: system.img not found in GSI ZIP!" && exit 1
         fi
         
-        # البحث عن أقسام vendor أو product من الروم الأصلي إن وجدت
         VENDOR_IMG=$(find extracted_stock/ -type f -name "vendor.img" | head -n 1)
         if [ -n "$VENDOR_IMG" ]; then
           mv "$VENDOR_IMG" vendor.img
@@ -75,7 +76,9 @@ jobs:
         SYS_SIZE=$(stat -c%s system.img)
         SUPER_SIZE=${{ github.event.inputs.super_size }}
         
-        ARG_COMMAND="./lpmake --metadata-size 65536 --super-name super --metadata-slots 2 --device super:$SUPER_SIZE --group main:$SUPER_SIZE"
+        LPMAKE_EXEC=$(command -v lpmake || echo "./lpmake")
+        
+        ARG_COMMAND="$LPMAKE_EXEC --metadata-size 65536 --super-name super --metadata-slots 2 --device super:$SUPER_SIZE --group main:$SUPER_SIZE"
         ARG_COMMAND="$ARG_COMMAND --partition system:readonly:$SYS_SIZE:main --image system=system.img"
         
         if [ -f vendor.img ]; then
