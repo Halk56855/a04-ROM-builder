@@ -26,24 +26,23 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Install System Dependencies & Build Tools
+    - name: Install Essential System Tools
       run: |
         sudo apt-get update
-        sudo apt-get install -y android-sdk-libsparse-utils android-sdk-platform-tools-common \
-          wget p7zip-full tar unzip file curl cmake ninja-build build-essential \
-          libsparse-dev libprotobuf-dev protobuf-compiler libbase-dev libgtest-dev
+        sudo apt-get install -y wget p7zip-full tar unzip file curl python3-pip python3-setuptools
 
-    - name: Build lpmake Native Binary
+    - name: Setup lpmake Tool
       run: |
-        echo "Cloning and building lpmake natively..."
-        git clone --recursive https://github.com/nmeum/android-tools.git
-        cd android-tools
-        mkdir build && cd build
-        cmake .. -GNinja -DBUILD_SHARED_LIBS=OFF
-        ninja lpmake
-        cp vendor/lpmake ../../lpmake || find . -name "lpmake" -exec cp {} ../../lpmake \;
-        cd ../..
-        chmod +x lpmake
+        # المحاولة الأولى: تثبيت lpmake عبر pip
+        pip3 install --break-system-packages lpmake || pip3 install lpmake || true
+        
+        # إذا لم تتم إضافتها إلى PATH، نقوم بتنزيل الملف التنفيذي المباشر المستقر
+        if ! command -v lpmake &> /dev/null; then
+          echo "Downloading static pre-built lpmake binary..."
+          curl -sL "https://github.com/unix33/android_tools_binaries/raw/main/lpmake" -o lpmake || \
+          curl -sL "https://raw.githubusercontent.com/seba-ubuntu/7th_Heaven_Installer/master/bin/lpmake" -o lpmake
+          chmod +x lpmake
+        fi
 
     - name: Download Stock ROM and GSI
       run: |
@@ -77,7 +76,9 @@ jobs:
         SYS_SIZE=$(stat -c%s system.img)
         SUPER_SIZE=${{ github.event.inputs.super_size }}
         
-        ARG_COMMAND="./lpmake --metadata-size 65536 --super-name super --metadata-slots 2 --device super:$SUPER_SIZE --group main:$SUPER_SIZE"
+        LPMAKE_EXEC=$(command -v lpmake || echo "./lpmake")
+        
+        ARG_COMMAND="$LPMAKE_EXEC --metadata-size 65536 --super-name super --metadata-slots 2 --device super:$SUPER_SIZE --group main:$SUPER_SIZE"
         ARG_COMMAND="$ARG_COMMAND --partition system:readonly:$SYS_SIZE:main --image system=system.img"
         
         if [ -f vendor.img ]; then
