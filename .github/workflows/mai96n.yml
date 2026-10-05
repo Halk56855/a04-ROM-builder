@@ -1,15 +1,20 @@
-name: Build Samsung Super Image
+namename: Build Samsung Super Image
 
 on:
   workflow_dispatch:
     inputs:
-      gsi_url:
-        description: 'رابط تنزيل الروم المباشر'
+      stock_rom_url:
+        description: 'رابط الروم المعدل/الأصلي (OneUI Clean)'
         required: true
         default: 'https://downloads.sourceforge.net/project/oneui-unleashed/A04/No-GApps%20with%20Samsung%20Bloatware%20Debloated/Odin%20Flashable/V1.1/A04%20Clean%20Debloat.zip'
         type: string
+      gsi_url:
+        description: 'رابط ملف الـ GSI (AxisGSI)'
+        required: true
+        default: 'https://downloads.sourceforge.net/project/axisgsiupdates/oneui/oneui-15-A055FXXSFDZD1-25.05.2026-AxisGSI.zip?ts=gAAAAABqwwTTYnvge0Qa_STXBEpe31fBxu6BR2MACtv3r2fKi0j3YlW_Fm1fVwS30GcKSxXtxjTRL0QbiAmJpKDl6jTE1tI5_w%3D%3D&use_mirror=master&r=android-app%3A%2F%2Forg.telegram.plus%2F'
+        type: string
       super_size:
-        description: 'حجم قسم super بالبايت (الافتراضي للهاتف ~3.5GB)'
+        description: 'حجم قسم super بالبايت (الافتراضي للـ Galaxy A04 هو 3758096384)'
         required: true
         default: '3758096384'
 
@@ -21,74 +26,75 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Install Dependencies and Android Tools
+    - name: Install System Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y android-sdk-libsparse-utils android-sdk-platform-tools-common wget p7zip-full tar unzip file android-sdk-libsparse-dev android-tools-fsutils
-        
-        # تثبيت أداة lpmake مباشرة من حزمة android-tools الرسمية في أوبونتو
-        sudo apt-get install -y android-tools-mkbootimg android-sdk-platform-tools || true
-        
-        # إذا لم تتوفر في apt يتم تنزيل النسخة المعتمدة من مستودع phhusson الأساسي المباشر
-        if ! command -v lpmake &> /dev/null; then
-          wget https://github.com/phhusson/vendor_hardware_overlay/blob/pie/lpmake?raw=true -O lpmake || \
-          wget https://raw.githubusercontent.com/phhusson/vendor_hardware_overlay/pie/lpmake -O lpmake
-          chmod +x lpmake
-        fi
+        sudo apt-get install -y android-sdk-libsparse-utils android-sdk-platform-tools-common wget p7zip-full tar unzip file curl
 
-    - name: Download and Process Input File
+    - name: Get lpmake Binary
       run: |
-        echo "Downloading file from: ${{ github.event.inputs.gsi_url }}"
-        wget -O downloaded_file "${{ github.event.inputs.gsi_url }}"
+        wget -q https://github.com/nmeum/android-tools/releases/download/34.0.5/android-tools-34.0.5-linux.tar.xz -O android-tools.tar.xz
+        tar -xf android-tools.tar.xz
+        cp android-tools-34.0.5-linux/lpmake ./lpmake || find . -name "lpmake" -exec cp {} ./lpmake \;
+        chmod +x lpmake
+
+    - name: Download Stock ROM and GSI
+      run: |
+        echo "Downloading Stock ROM..."
+        wget -q --show-progress -O stock_file.zip "${{ github.event.inputs.stock_rom_url }}"
         
-        FILE_TYPE=$(file downloaded_file)
-        echo "File type detected: $FILE_TYPE"
+        echo "Downloading AxisGSI..."
+        wget -q --show-progress -O gsi_file.zip "${{ github.event.inputs.gsi_url }}"
+
+    - name: Unpack and Extract Images
+      run: |
+        mkdir -p extracted_stock extracted_gsi
         
-        if echo "$FILE_TYPE" | grep -q "Zip archive"; then
-          echo "Extracting ZIP archive..."
-          unzip downloaded_file -d extracted/
-          SYS_FILE=$(find extracted/ -type f -name "*.img" | head -n 1)
-          if [ -n "$SYS_FILE" ]; then
-            mv "$SYS_FILE" system.img
-          else
-            echo "No .img file found inside ZIP!" && exit 1
-          fi
-        elif echo "$FILE_TYPE" | grep -q "XZ compressed"; then
-          echo "Extracting XZ archive..."
-          mv downloaded_file file.xz
-          xz -d file.xz
-          mv file system.img
+        # استخراج الروم الأصلي/المعدل
+        unzip -q stock_file.zip -d extracted_stock/
+        
+        # استخراج الـ GSI
+        unzip -q gsi_file.zip -d extracted_gsi/
+        
+        # اختيار نظام الـ GSI كقسم system
+        GSI_IMG=$(find extracted_gsi/ -type f -name "*.img" | head -n 1)
+        if [ -n "$GSI_IMG" ]; then
+          mv "$GSI_IMG" system.img
         else
-          echo "Using raw IMG file..."
-          mv downloaded_file system.img
+          echo "Error: system.img not found in GSI ZIP!" && exit 1
+        fi
+        
+        # البحث عن أقسام vendor أو product من الروم الأصلي إن وجدت
+        VENDOR_IMG=$(find extracted_stock/ -type f -name "vendor.img" | head -n 1)
+        if [ -n "$VENDOR_IMG" ]; then
+          mv "$VENDOR_IMG" vendor.img
         fi
 
-    - name: Build super.img
+    - name: Build Combined super.img
       run: |
-        IMG_SIZE=$(stat -c%s system.img)
+        SYS_SIZE=$(stat -c%s system.img)
         SUPER_SIZE=${{ github.event.inputs.super_size }}
         
-        echo "System Image Size: $IMG_SIZE"
-        echo "Target Super Size: $SUPER_SIZE"
+        ARG_COMMAND="./lpmake --metadata-size 65536 --super-name super --metadata-slots 2 --device super:$SUPER_SIZE --group main:$SUPER_SIZE"
+        ARG_COMMAND="$ARG_COMMAND --partition system:readonly:$SYS_SIZE:main --image system=system.img"
         
-        LPMAKE_EXEC=$(command -v lpmake || echo "./lpmake")
+        if [ -f vendor.img ]; then
+          VEN_SIZE=$(stat -c%s vendor.img)
+          ARG_COMMAND="$ARG_COMMAND --partition vendor:readonly:$VEN_SIZE:main --image vendor=vendor.img"
+        fi
         
-        $LPMAKE_EXEC \
-          --metadata-size 65536 \
-          --super-name super \
-          --metadata-slots 2 \
-          --device super:$SUPER_SIZE \
-          --group main:$SUPER_SIZE \
-          --partition system:readonly:$IMG_SIZE:main \
-          --image system=system.img \
-          --output super.img
+        ARG_COMMAND="$ARG_COMMAND --output super.img"
+        
+        echo "Executing: $ARG_COMMAND"
+        eval $ARG_COMMAND
 
-    - name: Pack super.img to .tar (For Odin)
+    - name: Create Odin Flashable TAR Archive
       run: |
+        echo "Compressing super.img into super.tar for Odin..."
         tar -cvf super.tar super.img
 
-    - name: Upload Processed File
+    - name: Upload Odin Ready Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: Samsung-Super-TAR
+        name: Samsung-Odin-Super-TAR
         path: super.tar
