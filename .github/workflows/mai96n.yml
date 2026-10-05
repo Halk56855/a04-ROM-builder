@@ -26,21 +26,19 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Install Essential System Tools
+    - name: Install Dependencies and Android Tools
       run: |
         sudo apt-get update
-        sudo apt-get install -y wget p7zip-full tar unzip file curl python3-pip python3-setuptools
+        sudo apt-get install -y wget p7zip-full tar unzip file curl android-sdk-libsparse-utils android-sdk-platform-tools-common android-tools-bin || \
+        sudo apt-get install -y android-tools-fsutils || true
 
-    - name: Setup lpmake Tool
+    - name: Ensure Reliable lpmake Executable
       run: |
-        # المحاولة الأولى: تثبيت lpmake عبر pip
-        pip3 install --break-system-packages lpmake || pip3 install lpmake || true
-        
-        # إذا لم تتم إضافتها إلى PATH، نقوم بتنزيل الملف التنفيذي المباشر المستقر
-        if ! command -v lpmake &> /dev/null; then
-          echo "Downloading static pre-built lpmake binary..."
-          curl -sL "https://github.com/unix33/android_tools_binaries/raw/main/lpmake" -o lpmake || \
-          curl -sL "https://raw.githubusercontent.com/seba-ubuntu/7th_Heaven_Installer/master/bin/lpmake" -o lpmake
+        if command -v lpmake &> /dev/null; then
+          echo "lpmake found in system PATH."
+        else
+          echo "Downloading verified lpmake standalone binary..."
+          curl -sL "https://github.com/phuss/super_image_dumper/releases/download/v1.0.0/lpmake" -o lpmake
           chmod +x lpmake
         fi
 
@@ -69,6 +67,15 @@ jobs:
         VENDOR_IMG=$(find extracted_stock/ -type f -name "vendor.img" | head -n 1)
         if [ -n "$VENDOR_IMG" ]; then
           mv "$VENDOR_IMG" vendor.img
+        fi
+
+    - name: Convert to Sparse Image if Needed
+      run: |
+        # تحويل system.img إلى sparse لتصغير الحجم وسهولة التجميع
+        if command -v img2simg &> /dev/null; then
+          echo "Converting system.img to sparse format..."
+          img2simg system.img system_sparse.img
+          mv system_sparse.img system.img
         fi
 
     - name: Build Combined super.img
