@@ -26,23 +26,36 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Install System Dependencies
+    - name: Install System Build Dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y wget p7zip-full tar unzip file curl \
-          build-essential libprotobuf-dev protobuf-compiler \
+          build-essential cmake ninja-build libprotobuf-dev protobuf-compiler \
           android-sdk-libsparse-utils android-sdk-platform-tools-common
 
-    - name: Build Lightweight lpmake Binary
+    - name: Download & Build lpmake From Source Archive
       run: |
-        echo "Cloning and building lpmake from clean source..."
-        git clone --recursive https://github.com/phuss/lpmake.git || git clone --recursive https://github.com/seba-ubuntu/lpmake.git
-        cd lpmake
-        make -j$(nproc)
-        cp lpmake ../lpmake
-        cd ..
+        echo "Downloading clean android-tools source archive..."
+        curl -sL "https://github.com/nmeum/android-tools/releases/download/35.0.2/android-tools-35.0.2.tar.xz" -o android-tools.tar.xz
+        mkdir android-tools-src
+        tar -xf android-tools.tar.xz -C android-tools-src --strip-components=1
+        
+        cd android-tools-src
+        mkdir build && cd build
+        
+        # تعطيل بناء أدوات adb/fastboot لتفادي مشاكل المكتبات والبناء السريع لـ lpmake فقط
+        cmake .. -GNinja \
+          -DBUILD_SHARED_LIBS=OFF \
+          -DANDROID_TOOLS_BUILD_BUILD=OFF \
+          -DANDROID_TOOLS_BUILD_FASTBOOT=OFF \
+          -DANDROID_TOOLS_BUILD_ADB=OFF
+          
+        ninja lpmake
+        
+        cp vendor/lpmake ../../lpmake || find . -name "lpmake" -type f -exec cp {} ../../lpmake \;
+        cd ../..
         chmod +x lpmake
-        echo "lpmake executable built successfully."
+        echo "lpmake successfully compiled natively."
 
     - name: Download Stock ROM and GSI
       run: |
