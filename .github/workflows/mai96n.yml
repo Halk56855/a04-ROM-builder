@@ -26,36 +26,23 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Install System Build Dependencies
+    - name: Install System Dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y wget p7zip-full tar unzip file curl \
-          build-essential cmake ninja-build libprotobuf-dev protobuf-compiler \
+          build-essential libprotobuf-dev protobuf-compiler \
           android-sdk-libsparse-utils android-sdk-platform-tools-common
 
-    - name: Build Standalone lpmake Executable
+    - name: Build Lightweight lpmake Binary
       run: |
-        echo "Configuring Git Identity for CMake Patching..."
-        git config --global user.email "builder@github.com"
-        git config --global user.name "GitHub Builder"
-
-        echo "Building lpmake directly from system source..."
-        git clone --depth 1 https://github.com/nmeum/android-tools.git
-        cd android-tools
-        mkdir build && cd build
-        cmake .. -GNinja -DBUILD_SHARED_LIBS=OFF
-        ninja lpmake
-        
-        LP_PATH=$(find . -name "lpmake" -type f | head -n 1)
-        if [ -n "$LP_PATH" ]; then
-          cp "$LP_PATH" ../../lpmake
-        else
-          echo "Build failed to locate lpmake executable!" && exit 1
-        fi
-        
-        cd ../..
+        echo "Cloning and building lpmake from clean source..."
+        git clone --recursive https://github.com/phuss/lpmake.git || git clone --recursive https://github.com/seba-ubuntu/lpmake.git
+        cd lpmake
+        make -j$(nproc)
+        cp lpmake ../lpmake
+        cd ..
         chmod +x lpmake
-        echo "lpmake successfully built natively."
+        echo "lpmake executable built successfully."
 
     - name: Download Stock ROM and GSI
       run: |
