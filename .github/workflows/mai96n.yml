@@ -32,7 +32,7 @@ jobs:
         sudo apt-get install -y wget p7zip-full tar unzip file curl \
           build-essential cmake ninja-build libprotobuf-dev protobuf-compiler \
           libfmt-dev libbrotli-dev libzstd-dev liblz4-dev libgtest-dev \
-          libusb-1.0-0-dev libpcre2-dev pkg-config \
+          libusb-1.0-0-dev libpcre2-dev pkg-config e2fsprogs \
           android-sdk-libsparse-utils android-sdk-platform-tools-common
 
     - name: Download & Build lpmake From Source Archive
@@ -83,6 +83,18 @@ jobs:
         VENDOR_IMG=$(find extracted_stock/ -type f -name "vendor.img" | head -n 1)
         if [ -n "$VENDOR_IMG" ]; then
           mv "$VENDOR_IMG" vendor_raw.img
+        fi
+
+    - name: Shrink RAW System Image
+      run: |
+        echo "Checking and shrinking system_raw.img filesystem size..."
+        e2fsck -y -f system_raw.img || true
+        resize2fs -M system_raw.img
+        
+        if [ -f vendor_raw.img ]; then
+          echo "Checking and shrinking vendor_raw.img filesystem size..."
+          e2fsck -y -f vendor_raw.img || true
+          resize2fs -M vendor_raw.img
         fi
 
     - name: Convert Images to Sparse Format
