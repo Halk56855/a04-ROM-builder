@@ -26,25 +26,32 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Install System Dependencies
+    - name: Install System Build Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y wget p7zip-full tar unzip file curl android-sdk-libsparse-utils android-sdk-platform-tools-common
+        sudo apt-get install -y wget p7zip-full tar unzip file curl \
+          build-essential cmake ninja-build libprotobuf-dev protobuf-compiler \
+          android-sdk-libsparse-utils android-sdk-platform-tools-common
 
-    - name: Download Verified lpmake Binary
+    - name: Build Standalone lpmake Executable
       run: |
-        echo "Downloading reliable lpmake executable from otatools release..."
-        curl -sL "https://github.com/kalilocal/otatools/raw/main/bin/lpmake" -o lpmake || \
-        curl -sL "https://github.com/carlitoxx-dev/otatools_binaries/raw/master/lpmake" -o lpmake
+        echo "Building lpmake directly from system source..."
+        git clone --depth 1 https://github.com/nmeum/android-tools.git
+        cd android-tools
+        mkdir build && cd build
+        cmake .. -GNinja -DBUILD_SHARED_LIBS=OFF -DANDROID_TOOLS_BUILD_LPMAKE=ON
+        ninja lpmake || ninja
         
-        chmod +x lpmake
-        
-        # التأكد من أن الملف ليس صفحة HTML
-        if file lpmake | grep -q "text"; then
-          echo "Error: Downloaded file is HTML or text, not binary!"
-          exit 1
+        LP_PATH=$(find . -name "lpmake" -type f | head -n 1)
+        if [ -n "$LP_PATH" ]; then
+          cp "$LP_PATH" ../../lpmake
+        else
+          echo "Build failed to locate lpmake executable!" && exit 1
         fi
-        echo "lpmake binary verified successfully."
+        
+        cd ../..
+        chmod +x lpmake
+        echo "lpmake successfully built natively."
 
     - name: Download Stock ROM and GSI
       run: |
