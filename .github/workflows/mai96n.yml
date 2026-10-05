@@ -4,8 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       gsi_url:
-        description: 'رابط تنزيل الملف المباشر (Direct Download URL)'
+        description: 'رابط تنزيل الروم المباشر'
         required: true
+        default: 'https://downloads.sourceforge.net/project/oneui-unleashed/A04/No-GApps%20with%20Samsung%20Bloatware%20Debloated/Odin%20Flashable/V1.1/A04%20Clean%20Debloat.zip'
         type: string
       super_size:
         description: 'حجم قسم super بالبايت (الافتراضي للهاتف ~3.5GB)'
@@ -27,7 +28,7 @@ jobs:
 
     - name: Download and Process Input File
       run: |
-        echo "Downloading file from provided URL..."
+        echo "Downloading file from: ${{ github.event.inputs.gsi_url }}"
         wget -O downloaded_file "${{ github.event.inputs.gsi_url }}"
         
         FILE_TYPE=$(file downloaded_file)
