@@ -14,9 +14,9 @@ on:
         default: 'https://downloads.sourceforge.net/project/axisgsiupdates/oneui/oneui-15-A055FXXSFDZD1-25.05.2026-AxisGSI.zip?ts=gAAAAABqwwTTYnvge0Qa_STXBEpe31fBxu6BR2MACtv3r2fKi0j3YlW_Fm1fVwS30GcKSxXtxjTRL0QbiAmJpKDl6jTE1tI5_w%3D%3D&use_mirror=master&r=android-app%3A%2F%2Forg.telegram.plus%2F'
         type: string
       super_size:
-        description: 'حجم قسم super بالبايت (الافتراضي للـ Galaxy A04 هو 3758096384)'
+        description: 'حجم قسم super بالبايت (3.91 GiB = 4198481920)'
         required: true
-        default: '3758096384'
+        default: '4198481920'
 
 jobs:
   build:
@@ -85,7 +85,7 @@ jobs:
           mv "$VENDOR_IMG" vendor_raw.img
         fi
 
-    - name: Shrink RAW System Image
+    - name: Shrink RAW Filesystem Images
       run: |
         echo "Checking and shrinking system_raw.img filesystem size..."
         e2fsck -y -f system_raw.img || true
