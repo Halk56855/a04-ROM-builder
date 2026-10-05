@@ -85,37 +85,46 @@ jobs:
           mv "$VENDOR_IMG" vendor_input.img
         fi
 
-    - name: Process, Unpack EROFS, and Shrink
+    - name: Mount, Extract & Build Tight ext4 Image
       run: |
-        echo "Converting system image to RAW if sparse..."
+        echo "Converting system image to RAW format..."
         simg2img system_input.img system_raw.img 2>/dev/null || mv system_input.img system_raw.img
         rm -f system_input.img
 
-        FS_TYPE=$(file -b system_raw.img | awk '{print $1}')
-        echo "Detected system filesystem: $FS_TYPE"
+        mkdir -p /tmp/sys_mount /tmp/sys_dump
+        
+        echo "Mounting raw image..."
+        sudo mount -o loop,ro system_raw.img /tmp/sys_mount || {
+          echo "Standard mount failed. Trying erofs mount..."
+          sudo mount -t erofs -o loop system_raw.img /tmp/sys_mount
+        }
 
-        if [ "$FS_TYPE" = "EROFS" ] || file system_raw.img | grep -qi "erofs"; then
-          echo "Unpacking EROFS image to ext4..."
-          mkdir -p sys_dump
-          fsck.erofs --extract=sys_dump system_raw.img || dump.erofs -e sys_dump system_raw.img || true
-          rm -f system_raw.img
-          
-          # إنشاء صورة ext4 بحجم مطابق وتعبئتها
-          make_ext4fs -l 3500M -s system.img sys_dump/ 2>/dev/null || {
-            echo "Fallback to mkfs.ext4..."
-            truncate -s 3500M system_raw.img
-            mkfs.ext4 -F -d sys_dump system_raw.img
-            img2simg system_raw.img system.img
-            rm -f system_raw.img
-          }
-          rm -rf sys_dump
-        else
-          echo "Running standard ext4 check and resize..."
-          e2fsck -y -f system_raw.img || true
-          resize2fs -M system_raw.img || true
-          img2simg system_raw.img system.img
-          rm -f system_raw.img
-        fi
+        echo "Copying contents to dump directory..."
+        sudo cp -a /tmp/sys_mount/* /tmp/sys_dump/
+        sudo umount /tmp/sys_mount
+        rm -f system_raw.img
+
+        echo "Calculating minimum directory size..."
+        DIR_SIZE_KB=$(sudo du -sk /tmp/sys_dump | awk '{print $1}')
+        # إضافة هامش أمان 5% فقط فوق الحجم الفعلي
+        TARGET_SIZE_KB=$(( DIR_SIZE_KB + (DIR_SIZE_KB * 5 / 100) ))
+        TARGET_SIZE_BYTES=$(( TARGET_SIZE_KB * 1024 ))
+        
+        echo "Target raw ext4 size: $TARGET_SIZE_BYTES bytes ($(( TARGET_SIZE_KB / 1024 )) MB)"
+
+        echo "Creating new tight ext4 image..."
+        truncate -s ${TARGET_SIZE_BYTES} system_new_raw.img
+        sudo mkfs.ext4 -F -O ^huge_file -m 0 system_new_raw.img
+        
+        mkdir -p /tmp/new_mount
+        sudo mount -o loop system_new_raw.img /tmp/new_mount
+        sudo cp -a /tmp/sys_dump/* /tmp/new_mount/
+        sudo umount /tmp/new_mount
+        sudo rm -rf /tmp/sys_dump /tmp/sys_mount /tmp/new_mount
+
+        echo "Converting system_new_raw.img to sparse system.img..."
+        img2simg system_new_raw.img system.img
+        rm -f system_new_raw.img
 
         if [ -f vendor_input.img ]; then
           echo "Processing vendor image..."
