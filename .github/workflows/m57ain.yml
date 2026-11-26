@@ -223,8 +223,8 @@ jobs:
           non_interactive = True
           EOF
 
-          pmbootstrap --arch=aarch64 build --force linux-samsung-a045f
-          pmbootstrap --arch=aarch64 build --force device-samsung-a045f
+          pmbootstrap build --force linux-samsung-a045f
+          pmbootstrap build --force device-samsung-a045f
           pmbootstrap install
           pmbootstrap export --odin "$GITHUB_WORKSPACE/export_out" || pmbootstrap export "$GITHUB_WORKSPACE/export_out"
 
