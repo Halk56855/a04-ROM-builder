@@ -211,21 +211,19 @@ jobs:
           which pmbootstrap
           pmbootstrap --version
 
-          pmbootstrap -y init \
-            --aports "/home/runner/.local/var/pmbootstrap/cache_git/pmaports" \
-            --work "$GITHUB_WORKSPACE/pm_work" \
-            --device "samsung-a045f" \
-            --ui "${{ inputs.ui_choice }}" \
-            --kernel "samsung-a045f" \
-            --extra-packages "none" \
-            --timezone "Asia/Bahrain" \
-            --hostname "a045f" \
-            --user "user" || pmbootstrap -y init
+          PMAPORTS_DIR="/home/runner/.local/var/pmbootstrap/cache_git/pmaports"
+          PMB_ARGS=(-p "$PMAPORTS_DIR" -w "$GITHUB_WORKSPACE/pm_work")
 
-          pmbootstrap build --force linux-samsung-a045f
-          pmbootstrap build --force device-samsung-a045f
-          pmbootstrap install
-          pmbootstrap export --odin "$GITHUB_WORKSPACE/export_out" || pmbootstrap export "$GITHUB_WORKSPACE/export_out"
+          yes "" | pmbootstrap "${PMB_ARGS[@]}" init || true
+          pmbootstrap "${PMB_ARGS[@]}" config device samsung-a045f || true
+          pmbootstrap "${PMB_ARGS[@]}" config ui "${{ inputs.ui_choice }}" || true
+          pmbootstrap "${PMB_ARGS[@]}" config hostname a045f || true
+          pmbootstrap "${PMB_ARGS[@]}" config timezone Asia/Bahrain || true
+
+          pmbootstrap "${PMB_ARGS[@]}" build --force linux-samsung-a045f
+          pmbootstrap "${PMB_ARGS[@]}" build --force device-samsung-a045f
+          pmbootstrap "${PMB_ARGS[@]}" install
+          pmbootstrap "${PMB_ARGS[@]}" export --odin "$GITHUB_WORKSPACE/export_out" || pmbootstrap "${PMB_ARGS[@]}" export "$GITHUB_WORKSPACE/export_out"
 
           cp -r "$GITHUB_WORKSPACE/kernel_out" "$GITHUB_WORKSPACE/export_out/raw_kernel"
           find "$GITHUB_WORKSPACE/a04_trees" -maxdepth 4 \( -iname "*dtbo*.img" -o -iname "*vbmeta*.img" \) -exec cp {} "$GITHUB_WORKSPACE/export_out/" \; 2>/dev/null || true
