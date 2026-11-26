@@ -1,10 +1,10 @@
-name: Build Nura Linux for SM-A045F
+name: Build Nura Linux for SM-A045F (Compatible)
 
 on:
   workflow_dispatch:
     inputs:
       defconfig_name:
-        description: "Defconfig file in arch/arm64/configs"
+        description: "Defconfig file (a04_00_defconfig or a04_defconfig)"
         required: true
         default: "a04_00_defconfig"
       ui_choice:
@@ -20,26 +20,90 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            git python3 openssl kpartx udev bc bison flex libssl-dev \
-            build-essential device-tree-compiler android-sdk-libsparse-utils
+            git python3 python3-pip openssl kpartx udev bc bison flex \
+            libssl-dev libncurses-dev build-essential device-tree-compiler \
+            android-sdk-libsparse-utils wget tar xz-utils cpio zip unzip
+
+      - name: Download GCC & Clang Toolchain
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/toolchain/gcc" "$GITHUB_WORKSPACE/toolchain/clang/host/linux-x86/clang-r383902"
+
+          cd "$GITHUB_WORKSPACE/toolchain/gcc"
+          wget -q --retry-connrefused --waitretry=2 --read-timeout=30 -t 5 \
+            "https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz" \
+            -O gcc.tar.xz || \
+          wget -q --retry-connrefused --waitretry=2 --read-timeout=30 -t 5 \
+            "https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz" \
+            -O gcc.tar.xz
+          tar -xf gcc.tar.xz -C ./
+
+          cd "$GITHUB_WORKSPACE/toolchain/clang"
+          wget -q --retry-connrefused --waitretry=2 --read-timeout=30 -t 5 \
+            "https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/clang-r383902.tar.gz" \
+            -O clang.tar.gz
+          tar -xzf clang.tar.gz -C host/linux-x86/clang-r383902
+
+          cd "$GITHUB_WORKSPACE"
 
       - name: Clone Nura repos and A04 trees
         run: |
-          mkdir -p "$HOME/nura_work" "$HOME/a04_trees"
-          git clone --depth=1 https://gitlab.nura.eco/nura/pmbootstrap.git "$HOME/nura_work/pmbootstrap"
-          git clone --depth=1 https://gitlab.nura.eco/nura/pmaports.git "$HOME/nura_work/pmaports"
-          git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_device_samsung_a04.git "$HOME/a04_trees/device"
-          git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_vendor_samsung_a04.git "$HOME/a04_trees/vendor"
-          git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_kernel_samsung_a04.git "$HOME/a04_trees/kernel"
-          echo "$HOME/nura_work/pmbootstrap" >> "$GITHUB_PATH"
+          mkdir -p "$GITHUB_WORKSPACE/nura_work" "$GITHUB_WORKSPACE/a04_trees"
+          git clone --depth=1 https://gitlab.nura.eco/nura/pmbootstrap.git "$GITHUB_WORKSPACE/nura_work/pmbootstrap"
+          git clone --depth=1 https://gitlab.nura.eco/nura/pmaports.git "$GITHUB_WORKSPACE/nura_work/pmaports"
+          git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_device_samsung_a04.git "$GITHUB_WORKSPACE/a04_trees/device"
+          git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_vendor_samsung_a04.git "$GITHUB_WORKSPACE/a04_trees/vendor"
+          git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_kernel_samsung_a04.git "$GITHUB_WORKSPACE/a04_trees/kernel"
+          echo "$GITHUB_WORKSPACE/nura_work/pmbootstrap" >> "$GITHUB_PATH"
 
-      - name: Create device-samsung-a045f and linux-samsung-a045f in pmaports
+      - name: Build SM-A045F Kernel with Clang & GCC
         run: |
-          DEV_DIR="$HOME/nura_work/pmaports/device/testing/device-samsung-a045f"
-          KRN_DIR="$HOME/nura_work/pmaports/device/testing/linux-samsung-a045f"
+          GCC_DIR=$(find "$GITHUB_WORKSPACE/toolchain/gcc" -maxdepth 1 -type d -name "arm-gnu-toolchain-*" | head -n 1)
+          CLANG_DIR="$GITHUB_WORKSPACE/toolchain/clang/host/linux-x86/clang-r383902"
+          export PATH="$CLANG_DIR/bin:$GCC_DIR/bin:$PATH"
+
+          mkdir -p "$GITHUB_WORKSPACE/kernel_out/modules"
+          cd "$GITHUB_WORKSPACE/a04_trees/kernel"
+
+          make O=out ARCH=arm64 "${{ inputs.defconfig_name }}"
+
+          make -j$(nproc) O=out ARCH=arm64 \
+            CC=clang \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-none-linux-gnu- \
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip
+
+          make O=out ARCH=arm64 INSTALL_MOD_PATH="$GITHUB_WORKSPACE/kernel_out/modules" modules_install || true
+
+          # Copy kernel image (Image.gz-dtb, Image.gz, or Image) and DTBs
+          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
+            cp out/arch/arm64/boot/Image.gz-dtb "$GITHUB_WORKSPACE/kernel_out/vmlinuz"
+          elif [ -f out/arch/arm64/boot/Image.gz ]; then
+            cp out/arch/arm64/boot/Image.gz "$GITHUB_WORKSPACE/kernel_out/vmlinuz"
+          else
+            cp out/arch/arm64/boot/Image "$GITHUB_WORKSPACE/kernel_out/vmlinuz"
+          fi
+
+          find out/arch/arm64/boot/dts -name "*.dtb" -exec cp {} "$GITHUB_WORKSPACE/kernel_out/" \; 2>/dev/null || true
+          find out/arch/arm64/boot/dts -name "*.dtbo" -exec cp {} "$GITHUB_WORKSPACE/kernel_out/" \; 2>/dev/null || true
+          ls -lh "$GITHUB_WORKSPACE/kernel_out"
+
+      - name: Create device-samsung-a045f and linux-samsung-a045f packages
+        run: |
+          DEV_DIR="$GITHUB_WORKSPACE/nura_work/pmaports/device/testing/device-samsung-a045f"
+          KRN_DIR="$GITHUB_WORKSPACE/nura_work/pmaports/device/testing/linux-samsung-a045f"
           mkdir -p "$DEV_DIR" "$KRN_DIR"
 
-          cat <<'EOF' > "$DEV_DIR/deviceinfo"
+          # Extract boot offsets/pagesize from BoardConfig if present
+          PAGESIZE=$(grep -rn "BOARD_KERNEL_PAGESIZE" "$GITHUB_WORKSPACE/a04_trees/device/" | head -n 1 | grep -oE '[0-9]+' || echo "2048")
+          BASE_ADDR=$(grep -rn "BOARD_KERNEL_BASE" "$GITHUB_WORKSPACE/a04_trees/device/" | head -n 1 | grep -oE '0x[0-9a-fA-F]+' || echo "0x40078000")
+          CMDLINE=$(grep -rn "BOARD_KERNEL_CMDLINE" "$GITHUB_WORKSPACE/a04_trees/device/" | head -n 1 | sed -E 's/.*:= *//' | tr -d '"' || echo "bootopt=64S3,32N2,64N2")
+
+          cat <<EOF > "$DEV_DIR/deviceinfo"
           deviceinfo_format_version="0"
           deviceinfo_name="Samsung Galaxy A04 (SM-A045F)"
           deviceinfo_codename="a045f"
@@ -47,18 +111,18 @@ jobs:
           deviceinfo_arch="aarch64"
           deviceinfo_chassis="handset"
           deviceinfo_flash_methods="heimdall"
-          deviceinfo_bootimg_qcdt="false"
-          deviceinfo_bootimg_dtb_second="false"
           deviceinfo_generate_bootimg="true"
           deviceinfo_header_version="2"
-          deviceinfo_kernel_cmdline=""
+          deviceinfo_flash_pagesize="$PAGESIZE"
+          deviceinfo_flash_offset_base="$BASE_ADDR"
+          deviceinfo_kernel_cmdline="$CMDLINE"
           EOF
 
           cat <<'EOF' > "$DEV_DIR/APKBUILD"
           pkgname=device-samsung-a045f
           pkgver=1
           pkgrel=0
-          pkgdesc="Samsung Galaxy A04 SM-A045F deviceinfo"
+          pkgdesc="Samsung Galaxy A04 SM-A045F device package"
           arch="aarch64"
           license="MIT"
           depends="linux-samsung-a045f postmarketos-base"
@@ -82,45 +146,31 @@ jobs:
           pkgname=linux-samsung-a045f
           pkgver=4.19.0
           pkgrel=0
-          pkgdesc="Samsung Galaxy A04 SM-A045F kernel"
+          pkgdesc="Prebuilt Clang kernel for Samsung Galaxy A04 SM-A045F"
           arch="aarch64"
           license="GPL-2.0-only"
           depends="postmarketos-mkinitfs"
-          makedepends="bash bc bison device-tree-compiler flex openssl-dev perl"
           options="!strip !check !tracedeps pmb:cross-native"
           source=""
 
-          prepare() {
-              rm -rf "\$srcdir/kernel"
-              cp -r "$HOME/a04_trees/kernel" "\$srcdir/kernel"
-              cd "\$srcdir/kernel"
-              make ARCH=arm64 "${{ inputs.defconfig_name }}"
-          }
-
-          build() {
-              cd "\$srcdir/kernel"
-              make ARCH=arm64 -j\$(nproc) Image.gz dtbs modules
-          }
-
           package() {
-              cd "\$srcdir/kernel"
-              mkdir -p "\$pkgdir/boot" "\$pkgdir/lib/modules"
-              cp arch/arm64/boot/Image.gz "\$pkgdir/boot/vmlinuz"
-              find arch/arm64/boot/dts -name "*.dtb" -exec cp {} "\$pkgdir/boot/" \; 2>/dev/null || true
-              make ARCH=arm64 INSTALL_MOD_PATH="\$pkgdir" modules_install
+              mkdir -p "\$pkgdir/boot" "\$pkgdir/lib"
+              cp "$GITHUB_WORKSPACE/kernel_out/vmlinuz" "\$pkgdir/boot/vmlinuz"
+              cp "$GITHUB_WORKSPACE/kernel_out"/*.dtb "\$pkgdir/boot/" 2>/dev/null || true
+              cp "$GITHUB_WORKSPACE/kernel_out"/*.dtbo "\$pkgdir/boot/" 2>/dev/null || true
+              if [ -d "$GITHUB_WORKSPACE/kernel_out/modules/lib/modules" ]; then
+                  cp -r "$GITHUB_WORKSPACE/kernel_out/modules/lib/modules" "\$pkgdir/lib/"
+              fi
           }
           EOF
 
-          pmbootstrap checksum device-samsung-a045f || true
-          pmbootstrap checksum linux-samsung-a045f || true
-
-      - name: Configure pmbootstrap
+      - name: Configure pmbootstrap and build all images
         run: |
-          mkdir -p "$HOME/.config" "$HOME/pm_work"
+          mkdir -p "$HOME/.config" "$GITHUB_WORKSPACE/pm_work" "$GITHUB_WORKSPACE/export_out"
           cat <<EOF > "$HOME/.config/pmbootstrap.cfg"
           [pmbootstrap]
-          aports = $HOME/nura_work/pmaports
-          work = $HOME/pm_work
+          aports = $GITHUB_WORKSPACE/nura_work/pmaports
+          work = $GITHUB_WORKSPACE/pm_work
           device = samsung-a045f
           ui = ${{ inputs.ui_choice }}
           kernel = samsung-a045f
@@ -130,19 +180,20 @@ jobs:
           user = user
           non_interactive = True
           EOF
-          pmbootstrap --version
 
-      - name: Build kernel, rootfs, and export images
-        run: |
-          mkdir -p "$HOME/export_out"
-          pmbootstrap --arch=aarch64 build linux-samsung-a045f
+          pmbootstrap --arch=aarch64 build --force linux-samsung-a045f
+          pmbootstrap --arch=aarch64 build --force device-samsung-a045f
           pmbootstrap install
-          pmbootstrap export --odin "$HOME/export_out" || pmbootstrap export "$HOME/export_out"
-          ls -lh "$HOME/export_out"
+          pmbootstrap export --odin "$GITHUB_WORKSPACE/export_out" || pmbootstrap export "$GITHUB_WORKSPACE/export_out"
 
-      - name: Upload built images as artifact
+          # Also include raw kernel outputs & any prebuilt dtbo/vbmeta from device/vendor trees
+          cp -r "$GITHUB_WORKSPACE/kernel_out" "$GITHUB_WORKSPACE/export_out/raw_kernel"
+          find "$GITHUB_WORKSPACE/a04_trees" -maxdepth 4 \( -iname "*dtbo*.img" -o -iname "*vbmeta*.img" \) -exec cp {} "$GITHUB_WORKSPACE/export_out/" \; 2>/dev/null || true
+          ls -lh "$GITHUB_WORKSPACE/export_out"
+
+      - name: Upload all built files
         uses: actions/upload-artifact@v4
         with:
-          name: sm-a045f-nura-linux-images
-          path: /home/runner/export_out/*
+          name: sm-a045f-nura-full-build
+          path: ${{ github.workspace }}/export_out/**
           retention-days: 7
