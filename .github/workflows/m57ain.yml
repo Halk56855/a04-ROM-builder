@@ -1,82 +1,148 @@
-name: HyperOS Porting for Galaxy A04 using Android_Image_Tools
+name: Build Nura Linux for SM-A045F
 
 on:
   workflow_dispatch:
+    inputs:
+      defconfig_name:
+        description: "Defconfig file in arch/arm64/configs"
+        required: true
+        default: "a04_00_defconfig"
+      ui_choice:
+        description: "UI (console, phosh, plasma-mobile)"
+        required: true
+        default: "console"
 
 jobs:
-  build:
-    runs-on: ubuntu-22.04
-
+  build-a045f:
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Create Swap Memory Safely
-        run: |
-          sudo swapoff /swapfile || true
-          sudo rm -f /swapfile
-          sudo fallocate -l 4G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
-          free -h
-
-      - name: Set up Environment & Dependencies
+      - name: Install host dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y axel cpio python3 python3-pip openjdk-11-jdk wget curl git zip unzip bc bison flex build-essential libssl-dev libstdc++6 lz4 android-sdk-libsparse-utils pv libfuse3-dev f2fs-tools fuse2fs attr autoconf automake libtool pkg-config liblz4-dev libselinux1-dev
-          sudo pip3 install --upgrade pip
-          sudo apt-get install -y erofs-utils || true
+          sudo apt-get install -y \
+            git python3 openssl kpartx udev bc bison flex libssl-dev \
+            build-essential device-tree-compiler android-sdk-libsparse-utils
 
-      - name: Free Up Disk Space
+      - name: Clone Nura repos and A04 trees
         run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf "/usr/local/share/boost"
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-          df -h
+          mkdir -p "$HOME/nura_work" "$HOME/a04_trees"
+          git clone --depth=1 https://gitlab.nura.eco/nura/pmbootstrap.git "$HOME/nura_work/pmbootstrap"
+          git clone --depth=1 https://gitlab.nura.eco/nura/pmaports.git "$HOME/nura_work/pmaports"
+          git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_device_samsung_a04.git "$HOME/a04_trees/device"
+          git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_vendor_samsung_a04.git "$HOME/a04_trees/vendor"
+          git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_kernel_samsung_a04.git "$HOME/a04_trees/kernel"
+          echo "$HOME/nura_work/pmbootstrap" >> "$GITHUB_PATH"
 
-      - name: Download ROMs at Warp Speed (Axel Engine)
+      - name: Create device-samsung-a045f and linux-samsung-a045f in pmaports
         run: |
-          mkdir -p workspace/INPUT_IMAGES workspace/REPACKED_IMAGES
-          
-          echo "Downloading Base ROM (Samsung Galaxy A04)..."
-          axel -n 16 -a -o workspace/INPUT_IMAGES/base.zip "https://drive.usercontent.google.com/download?id=1dtgh65lqqns4N_zHPOi2ZPaUnWWLZzuV&export=download&authuser=0" || wget -O workspace/INPUT_IMAGES/base.zip "https://drive.usercontent.google.com/download?id=1dtgh65lqqns4N_zHPOi2ZPaUnWWLZzuV&export=download&authuser=0"
-          
-          echo "Downloading Port ROM (Redmi A2 HyperOS)..."
-          axel -n 16 -a -o workspace/INPUT_IMAGES/port.tgz "https://bigota.d.miui.com/V14.0.44.0.TGOMIXM/water_global_images_V14.0.44.0.TGOMIXM_20251223.0000.00_13.0_a137b8cfcd.tgz" || wget -O workspace/INPUT_IMAGES/port.tgz "https://bigota.d.miui.com/V14.0.44.0.TGOMIXM/water_global_images_V14.0.44.0.TGOMIXM_20251223.0000.00_13.0_a137b8cfcd.tgz"
+          DEV_DIR="$HOME/nura_work/pmaports/device/testing/device-samsung-a045f"
+          KRN_DIR="$HOME/nura_work/pmaports/device/testing/linux-samsung-a045f"
+          mkdir -p "$DEV_DIR" "$KRN_DIR"
 
-      - name: Clone Android Image Tools Kitchen
+          cat <<'EOF' > "$DEV_DIR/deviceinfo"
+          deviceinfo_format_version="0"
+          deviceinfo_name="Samsung Galaxy A04 (SM-A045F)"
+          deviceinfo_codename="a045f"
+          deviceinfo_manufacturer="Samsung"
+          deviceinfo_arch="aarch64"
+          deviceinfo_chassis="handset"
+          deviceinfo_flash_methods="heimdall"
+          deviceinfo_bootimg_qcdt="false"
+          deviceinfo_bootimg_dtb_second="false"
+          deviceinfo_generate_bootimg="true"
+          deviceinfo_header_version="2"
+          deviceinfo_kernel_cmdline=""
+          EOF
+
+          cat <<'EOF' > "$DEV_DIR/APKBUILD"
+          pkgname=device-samsung-a045f
+          pkgver=1
+          pkgrel=0
+          pkgdesc="Samsung Galaxy A04 SM-A045F deviceinfo"
+          arch="aarch64"
+          license="MIT"
+          depends="linux-samsung-a045f postmarketos-base"
+          makedepends="devicepkg-dev"
+          source="deviceinfo"
+
+          build() {
+              devicepkg_build $startdir $pkgname
+          }
+
+          package() {
+              devicepkg_package $startdir $pkgname
+          }
+
+          sha512sums="
+          SKIP  deviceinfo
+          "
+          EOF
+
+          cat <<EOF > "$KRN_DIR/APKBUILD"
+          pkgname=linux-samsung-a045f
+          pkgver=4.19.0
+          pkgrel=0
+          pkgdesc="Samsung Galaxy A04 SM-A045F kernel"
+          arch="aarch64"
+          license="GPL-2.0-only"
+          depends="postmarketos-mkinitfs"
+          makedepends="bash bc bison device-tree-compiler flex openssl-dev perl"
+          options="!strip !check !tracedeps pmb:cross-native"
+          source=""
+
+          prepare() {
+              rm -rf "\$srcdir/kernel"
+              cp -r "$HOME/a04_trees/kernel" "\$srcdir/kernel"
+              cd "\$srcdir/kernel"
+              make ARCH=arm64 "${{ inputs.defconfig_name }}"
+          }
+
+          build() {
+              cd "\$srcdir/kernel"
+              make ARCH=arm64 -j\$(nproc) Image.gz dtbs modules
+          }
+
+          package() {
+              cd "\$srcdir/kernel"
+              mkdir -p "\$pkgdir/boot" "\$pkgdir/lib/modules"
+              cp arch/arm64/boot/Image.gz "\$pkgdir/boot/vmlinuz"
+              find arch/arm64/boot/dts -name "*.dtb" -exec cp {} "\$pkgdir/boot/" \; 2>/dev/null || true
+              make ARCH=arm64 INSTALL_MOD_PATH="\$pkgdir" modules_install
+          }
+          EOF
+
+          pmbootstrap checksum device-samsung-a045f || true
+          pmbootstrap checksum linux-samsung-a045f || true
+
+      - name: Configure pmbootstrap
         run: |
-          git clone https://github.com/ravindu644/Android_Image_Tools.git workspace/kitchen
-          mkdir -p workspace/kitchen/INPUT_IMAGES
-          cp -f workspace/INPUT_IMAGES/base.zip workspace/kitchen/INPUT_IMAGES/ 2>/dev/null || true
-          cp -f workspace/INPUT_IMAGES/port.tgz workspace/kitchen/INPUT_IMAGES/ 2>/dev/null || true
+          mkdir -p "$HOME/.config" "$HOME/pm_work"
+          cat <<EOF > "$HOME/.config/pmbootstrap.cfg"
+          [pmbootstrap]
+          aports = $HOME/nura_work/pmaports
+          work = $HOME/pm_work
+          device = samsung-a045f
+          ui = ${{ inputs.ui_choice }}
+          kernel = samsung-a045f
+          extra_packages = none
+          timezone = Asia/Bahrain
+          hostname = a045f
+          user = user
+          non_interactive = True
+          EOF
+          pmbootstrap --version
 
-      - name: Run Processing Non-Interactively
+      - name: Build kernel, rootfs, and export images
         run: |
-          cd workspace/kitchen
-          chmod +x android_image_tools.sh
-          export TERM=xterm
-          printf "1\n1\n" | sudo -E ./android_image_tools.sh || true
+          mkdir -p "$HOME/export_out"
+          pmbootstrap --arch=aarch64 build linux-samsung-a045f
+          pmbootstrap install
+          pmbootstrap export --odin "$HOME/export_out" || pmbootstrap export "$HOME/export_out"
+          ls -lh "$HOME/export_out"
 
-      - name: Copy Results to Repacked Folder
-        run: |
-          mkdir -p workspace/REPACKED_IMAGES
-          cp -rf workspace/kitchen/REPACKED_IMAGES/* workspace/REPACKED_IMAGES/ || echo "No files to copy yet"
-
-      - name: Pack Final ROM to Flashable ZIP
-        run: |
-          cd workspace/REPACKED_IMAGES
-          if [ -n "$(ls -A .)" ]; then
-            zip -r9 Galaxy-A04-HyperOS-Port.zip *
-          else
-            echo "Error: Output folder is empty!"
-            exit 1
-          fi
-
-      - name: Upload Built ROM Artifacts
+      - name: Upload built images as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Galaxy-A04-HyperOS-Port
-          path: workspace/REPACKED_IMAGES/*.zip
+          name: sm-a045f-nura-linux-images
+          path: /home/runner/export_out/*
+          retention-days: 7
