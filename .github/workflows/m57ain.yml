@@ -1,4 +1,4 @@
-name: Build Nura Linux for SM-A045F (Max Compatibility)
+name: Build Nura Linux for SM-A045F (Complete)
 
 on:
   workflow_dispatch:
@@ -64,7 +64,10 @@ jobs:
           git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_device_samsung_a04.git "$GITHUB_WORKSPACE/a04_trees/device"
           git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_vendor_samsung_a04.git "$GITHUB_WORKSPACE/a04_trees/vendor"
           git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_kernel_samsung_a04.git "$GITHUB_WORKSPACE/a04_trees/kernel"
-          echo "$GITHUB_WORKSPACE/nura_work/pmbootstrap" >> "$GITHUB_PATH"
+
+          chmod +x "$GITHUB_WORKSPACE/nura_work/pmbootstrap/pmbootstrap.py"
+          sudo ln -sf "$GITHUB_WORKSPACE/nura_work/pmbootstrap/pmbootstrap.py" /usr/local/bin/pmbootstrap
+          echo "/usr/local/bin" >> "$GITHUB_PATH"
 
       - name: Build SM-A045F Kernel with Clang & GCC
         run: |
@@ -95,14 +98,12 @@ jobs:
             CROSS_COMPILE=aarch64-none-linux-gnu-
           )
 
-          # Try primary defconfig, then fallback if needed
           if ! make "${MAKE_COMMON[@]}" "${{ inputs.defconfig_name }}"; then
             echo "Primary defconfig (${{ inputs.defconfig_name }}) failed, trying ${{ inputs.fallback_defconfig }}..."
             rm -rf out
             make "${MAKE_COMMON[@]}" "${{ inputs.fallback_defconfig }}"
           fi
 
-          # Build kernel image, dtbs, and modules (fallback LD if ld.lld not present)
           if command -v ld.lld >/dev/null 2>&1; then
             make "${MAKE_COMMON[@]}" LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip Image.gz dtbs modules || \
             make "${MAKE_COMMON[@]}" Image.gz dtbs modules
@@ -202,6 +203,12 @@ jobs:
       - name: Configure pmbootstrap and build all images
         run: |
           mkdir -p "$HOME/.config" "$GITHUB_WORKSPACE/pm_work" "$GITHUB_WORKSPACE/export_out"
+
+          chmod +x "$GITHUB_WORKSPACE/nura_work/pmbootstrap/pmbootstrap.py"
+          sudo ln -sf "$GITHUB_WORKSPACE/nura_work/pmbootstrap/pmbootstrap.py" /usr/local/bin/pmbootstrap
+          which pmbootstrap
+          pmbootstrap --version
+
           cat <<EOF > "$HOME/.config/pmbootstrap.cfg"
           [pmbootstrap]
           aports = $GITHUB_WORKSPACE/nura_work/pmaports
