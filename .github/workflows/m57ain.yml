@@ -1,12 +1,16 @@
-name: Build Nura Linux for SM-A045F (Compatible)
+name: Build Nura Linux for SM-A045F (Max Compatibility)
 
 on:
   workflow_dispatch:
     inputs:
       defconfig_name:
-        description: "Defconfig file (a04_00_defconfig or a04_defconfig)"
+        description: "Primary defconfig (a04_00_defconfig or a04_defconfig)"
         required: true
         default: "a04_00_defconfig"
+      fallback_defconfig:
+        description: "Fallback defconfig if primary fails"
+        required: true
+        default: "a04_defconfig"
       ui_choice:
         description: "UI (console, phosh, plasma-mobile)"
         required: true
@@ -22,26 +26,33 @@ jobs:
           sudo apt-get install -y \
             git python3 python3-pip openssl kpartx udev bc bison flex \
             libssl-dev libncurses-dev build-essential device-tree-compiler \
-            android-sdk-libsparse-utils wget tar xz-utils cpio zip unzip
+            android-sdk-libsparse-utils wget tar xz-utils cpio zip unzip file
 
       - name: Download GCC & Clang Toolchain
         run: |
-          mkdir -p "$GITHUB_WORKSPACE/toolchain/gcc" "$GITHUB_WORKSPACE/toolchain/clang/host/linux-x86/clang-r383902"
+          rm -rf "$GITHUB_WORKSPACE/toolchain"
+          mkdir -p "$GITHUB_WORKSPACE/toolchain/gcc" "$GITHUB_WORKSPACE/toolchain/clang"
 
           cd "$GITHUB_WORKSPACE/toolchain/gcc"
-          wget -q --retry-connrefused --waitretry=2 --read-timeout=30 -t 5 \
+          wget -q --show-progress --retry-connrefused --waitretry=2 --read-timeout=30 -t 5 \
             "https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz" \
             -O gcc.tar.xz || \
-          wget -q --retry-connrefused --waitretry=2 --read-timeout=30 -t 5 \
+          wget -q --show-progress --retry-connrefused --waitretry=2 --read-timeout=30 -t 5 \
             "https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz" \
             -O gcc.tar.xz
           tar -xf gcc.tar.xz -C ./
+          rm -f gcc.tar.xz
 
           cd "$GITHUB_WORKSPACE/toolchain/clang"
-          wget -q --retry-connrefused --waitretry=2 --read-timeout=30 -t 5 \
+          wget -q --show-progress --retry-connrefused --waitretry=2 --read-timeout=30 -t 5 \
             "https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/clang-r383902.tar.gz" \
             -O clang.tar.gz
-          tar -xzf clang.tar.gz -C host/linux-x86/clang-r383902
+          tar -xzf clang.tar.gz -C ./
+          rm -f clang.tar.gz
+
+          echo "=== Verifying toolchains ==="
+          find "$GITHUB_WORKSPACE/toolchain/gcc" -name "aarch64-none-linux-gnu-gcc" -type f -executable
+          find "$GITHUB_WORKSPACE/toolchain/clang" -name "clang" -type f -executable
 
           cd "$GITHUB_WORKSPACE"
 
@@ -57,29 +68,50 @@ jobs:
 
       - name: Build SM-A045F Kernel with Clang & GCC
         run: |
-          GCC_DIR=$(find "$GITHUB_WORKSPACE/toolchain/gcc" -maxdepth 1 -type d -name "arm-gnu-toolchain-*" | head -n 1)
-          CLANG_DIR="$GITHUB_WORKSPACE/toolchain/clang/host/linux-x86/clang-r383902"
-          export PATH="$CLANG_DIR/bin:$GCC_DIR/bin:$PATH"
+          GCC_BIN_DIR=$(dirname "$(find "$GITHUB_WORKSPACE/toolchain/gcc" -name "aarch64-none-linux-gnu-gcc" -type f -executable | head -n 1)")
+          CLANG_BIN_DIR=$(dirname "$(find "$GITHUB_WORKSPACE/toolchain/clang" -name "clang" -type f -executable | head -n 1)")
+
+          if [ -z "$GCC_BIN_DIR" ] || [ -z "$CLANG_BIN_DIR" ]; then
+            echo "ERROR: Missing GCC or Clang binary!"
+            exit 1
+          fi
+
+          export PATH="$CLANG_BIN_DIR:$GCC_BIN_DIR:$PATH"
+          echo "Using CLANG_BIN_DIR=$CLANG_BIN_DIR"
+          echo "Using GCC_BIN_DIR=$GCC_BIN_DIR"
+          clang --version | head -n 2
+          aarch64-none-linux-gnu-gcc --version | head -n 2
 
           mkdir -p "$GITHUB_WORKSPACE/kernel_out/modules"
           cd "$GITHUB_WORKSPACE/a04_trees/kernel"
+          rm -rf out
 
-          make O=out ARCH=arm64 "${{ inputs.defconfig_name }}"
+          MAKE_COMMON=(
+            -j$(nproc)
+            O=out
+            ARCH=arm64
+            CC=clang
+            CLANG_TRIPLE=aarch64-linux-gnu-
+            CROSS_COMPILE=aarch64-none-linux-gnu-
+          )
 
-          make -j$(nproc) O=out ARCH=arm64 \
-            CC=clang \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
-            CROSS_COMPILE=aarch64-none-linux-gnu- \
-            LD=ld.lld \
-            AR=llvm-ar \
-            NM=llvm-nm \
-            OBJCOPY=llvm-objcopy \
-            OBJDUMP=llvm-objdump \
-            STRIP=llvm-strip
+          # Try primary defconfig, then fallback if needed
+          if ! make "${MAKE_COMMON[@]}" "${{ inputs.defconfig_name }}"; then
+            echo "Primary defconfig (${{ inputs.defconfig_name }}) failed, trying ${{ inputs.fallback_defconfig }}..."
+            rm -rf out
+            make "${MAKE_COMMON[@]}" "${{ inputs.fallback_defconfig }}"
+          fi
 
-          make O=out ARCH=arm64 INSTALL_MOD_PATH="$GITHUB_WORKSPACE/kernel_out/modules" modules_install || true
+          # Build kernel image, dtbs, and modules (fallback LD if ld.lld not present)
+          if command -v ld.lld >/dev/null 2>&1; then
+            make "${MAKE_COMMON[@]}" LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip Image.gz dtbs modules || \
+            make "${MAKE_COMMON[@]}" Image.gz dtbs modules
+          else
+            make "${MAKE_COMMON[@]}" Image.gz dtbs modules
+          fi
 
-          # Copy kernel image (Image.gz-dtb, Image.gz, or Image) and DTBs
+          make "${MAKE_COMMON[@]}" INSTALL_MOD_PATH="$GITHUB_WORKSPACE/kernel_out/modules" modules_install || true
+
           if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
             cp out/arch/arm64/boot/Image.gz-dtb "$GITHUB_WORKSPACE/kernel_out/vmlinuz"
           elif [ -f out/arch/arm64/boot/Image.gz ]; then
@@ -98,10 +130,13 @@ jobs:
           KRN_DIR="$GITHUB_WORKSPACE/nura_work/pmaports/device/testing/linux-samsung-a045f"
           mkdir -p "$DEV_DIR" "$KRN_DIR"
 
-          # Extract boot offsets/pagesize from BoardConfig if present
-          PAGESIZE=$(grep -rn "BOARD_KERNEL_PAGESIZE" "$GITHUB_WORKSPACE/a04_trees/device/" | head -n 1 | grep -oE '[0-9]+' || echo "2048")
-          BASE_ADDR=$(grep -rn "BOARD_KERNEL_BASE" "$GITHUB_WORKSPACE/a04_trees/device/" | head -n 1 | grep -oE '0x[0-9a-fA-F]+' || echo "0x40078000")
-          CMDLINE=$(grep -rn "BOARD_KERNEL_CMDLINE" "$GITHUB_WORKSPACE/a04_trees/device/" | head -n 1 | sed -E 's/.*:= *//' | tr -d '"' || echo "bootopt=64S3,32N2,64N2")
+          PAGESIZE=$(grep -rn "BOARD_KERNEL_PAGESIZE" "$GITHUB_WORKSPACE/a04_trees/device/" 2>/dev/null | head -n 1 | grep -oE '[0-9]+' || true)
+          BASE_ADDR=$(grep -rn "BOARD_KERNEL_BASE" "$GITHUB_WORKSPACE/a04_trees/device/" 2>/dev/null | head -n 1 | grep -oE '0x[0-9a-fA-F]+' || true)
+          CMDLINE=$(grep -rn "BOARD_KERNEL_CMDLINE" "$GITHUB_WORKSPACE/a04_trees/device/" 2>/dev/null | head -n 1 | sed -E 's/.*:= *//' | tr -d '"' || true)
+
+          : "${PAGESIZE:=2048}"
+          : "${BASE_ADDR:=0x40078000}"
+          : "${CMDLINE:=bootopt=64S3,32N2,64N2}"
 
           cat <<EOF > "$DEV_DIR/deviceinfo"
           deviceinfo_format_version="0"
@@ -186,7 +221,6 @@ jobs:
           pmbootstrap install
           pmbootstrap export --odin "$GITHUB_WORKSPACE/export_out" || pmbootstrap export "$GITHUB_WORKSPACE/export_out"
 
-          # Also include raw kernel outputs & any prebuilt dtbo/vbmeta from device/vendor trees
           cp -r "$GITHUB_WORKSPACE/kernel_out" "$GITHUB_WORKSPACE/export_out/raw_kernel"
           find "$GITHUB_WORKSPACE/a04_trees" -maxdepth 4 \( -iname "*dtbo*.img" -o -iname "*vbmeta*.img" \) -exec cp {} "$GITHUB_WORKSPACE/export_out/" \; 2>/dev/null || true
           ls -lh "$GITHUB_WORKSPACE/export_out"
