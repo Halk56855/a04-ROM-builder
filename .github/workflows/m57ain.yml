@@ -58,9 +58,10 @@ jobs:
 
       - name: Clone Nura repos and A04 trees
         run: |
-          mkdir -p "$GITHUB_WORKSPACE/nura_work" "$GITHUB_WORKSPACE/a04_trees"
+          mkdir -p "$GITHUB_WORKSPACE/nura_work" "$GITHUB_WORKSPACE/a04_trees" \
+                   "/home/runner/.local/var/pmbootstrap/cache_git"
           git clone --depth=1 https://gitlab.nura.eco/nura/pmbootstrap.git "$GITHUB_WORKSPACE/nura_work/pmbootstrap"
-          git clone --depth=1 https://gitlab.nura.eco/nura/pmaports.git "$GITHUB_WORKSPACE/nura_work/pmaports"
+          git clone --depth=1 https://gitlab.nura.eco/nura/pmaports.git "/home/runner/.local/var/pmbootstrap/cache_git/pmaports"
           git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_device_samsung_a04.git "$GITHUB_WORKSPACE/a04_trees/device"
           git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_vendor_samsung_a04.git "$GITHUB_WORKSPACE/a04_trees/vendor"
           git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_kernel_samsung_a04.git "$GITHUB_WORKSPACE/a04_trees/kernel"
@@ -127,8 +128,9 @@ jobs:
 
       - name: Create device-samsung-a045f and linux-samsung-a045f packages
         run: |
-          DEV_DIR="$GITHUB_WORKSPACE/nura_work/pmaports/device/testing/device-samsung-a045f"
-          KRN_DIR="$GITHUB_WORKSPACE/nura_work/pmaports/device/testing/linux-samsung-a045f"
+          PMAPORTS_DIR="/home/runner/.local/var/pmbootstrap/cache_git/pmaports"
+          DEV_DIR="$PMAPORTS_DIR/device/testing/device-samsung-a045f"
+          KRN_DIR="$PMAPORTS_DIR/device/testing/linux-samsung-a045f"
           mkdir -p "$DEV_DIR" "$KRN_DIR"
 
           PAGESIZE=$(grep -rn "BOARD_KERNEL_PAGESIZE" "$GITHUB_WORKSPACE/a04_trees/device/" 2>/dev/null | head -n 1 | grep -oE '[0-9]+' || true)
@@ -209,19 +211,16 @@ jobs:
           which pmbootstrap
           pmbootstrap --version
 
-          cat <<EOF > "$HOME/.config/pmbootstrap.cfg"
-          [pmbootstrap]
-          aports = $GITHUB_WORKSPACE/nura_work/pmaports
-          work = $GITHUB_WORKSPACE/pm_work
-          device = samsung-a045f
-          ui = ${{ inputs.ui_choice }}
-          kernel = samsung-a045f
-          extra_packages = none
-          timezone = Asia/Bahrain
-          hostname = a045f
-          user = user
-          non_interactive = True
-          EOF
+          pmbootstrap -y init \
+            --aports "/home/runner/.local/var/pmbootstrap/cache_git/pmaports" \
+            --work "$GITHUB_WORKSPACE/pm_work" \
+            --device "samsung-a045f" \
+            --ui "${{ inputs.ui_choice }}" \
+            --kernel "samsung-a045f" \
+            --extra-packages "none" \
+            --timezone "Asia/Bahrain" \
+            --hostname "a045f" \
+            --user "user" || pmbootstrap -y init
 
           pmbootstrap build --force linux-samsung-a045f
           pmbootstrap build --force device-samsung-a045f
