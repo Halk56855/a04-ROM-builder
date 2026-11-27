@@ -30,7 +30,7 @@ jobs:
           sudo apt-get install -y \
             git python3 python3-pip python3-venv openssl kpartx udev bc bison flex \
             libssl-dev libncurses-dev build-essential device-tree-compiler \
-            android-sdk-libsparse-utils wget tar xz-utils cpio zip unzip file \
+            android-sdk-libsparse-utils e2fsprogs mkbootimg wget tar xz-utils cpio zip unzip file \
             jq curl ca-certificates
 
       - name: Download GCC & Clang Toolchain
@@ -138,6 +138,145 @@ jobs:
           find out/arch/arm64/boot/dts -name "*.dtb" -exec cp {} "$GITHUB_WORKSPACE/kernel_out/" \; 2>/dev/null || true
           find out/arch/arm64/boot/dts -name "*.dtbo" -exec cp {} "$GITHUB_WORKSPACE/kernel_out/" \; 2>/dev/null || true
           ls -lh "$GITHUB_WORKSPACE/kernel_out"
+
+      - name: Build boot.img from vmlinuz, dtb, and dtbo
+        run: |
+          BOOTIMG_WORK="$GITHUB_WORKSPACE/bootimg_work"
+          mkdir -p "$BOOTIMG_WORK" "$GITHUB_WORKSPACE/export_out/a045f_ubports"
+
+          which mkbootimg || { echo "mkbootimg not found"; exit 1; }
+
+          PAGESIZE=$(grep -rn "BOARD_KERNEL_PAGESIZE" "$GITHUB_WORKSPACE/a04_trees/device/" 2>/dev/null | head -n 1 | grep -oE '[0-9]+' || true)
+          BASE_ADDR=$(grep -rn "BOARD_KERNEL_BASE" "$GITHUB_WORKSPACE/a04_trees/device/" 2>/dev/null | head -n 1 | grep -oE '0x[0-9a-fA-F]+' || true)
+          CMDLINE=$(grep -rn "BOARD_KERNEL_CMDLINE" "$GITHUB_WORKSPACE/a04_trees/device/" 2>/dev/null | head -n 1 | sed -E 's/.*:= *//' | tr -d '"' || true)
+
+          : "${PAGESIZE:=2048}"
+          : "${BASE_ADDR:=0x40078000}"
+          : "${CMDLINE:=bootopt=64S3,32N2,64N2}"
+
+          RAMDISK_FILE="$BOOTIMG_WORK/ramdisk.cpio.gz"
+          printf '' | gzip -c > "$RAMDISK_FILE"
+
+          MKBOOTIMG_ARGS=(
+            --kernel "$GITHUB_WORKSPACE/kernel_out/vmlinuz"
+            --ramdisk "$RAMDISK_FILE"
+            --cmdline "$CMDLINE"
+            --base "$BASE_ADDR"
+            --pagesize "$PAGESIZE"
+            --header_version 2
+            --output "$BOOTIMG_WORK/boot.img"
+          )
+
+          if compgen -G "$GITHUB_WORKSPACE/kernel_out/*.dtb" > /dev/null; then
+            cat "$GITHUB_WORKSPACE/kernel_out"/*.dtb > "$BOOTIMG_WORK/dtb.img"
+            MKBOOTIMG_ARGS+=(--dtb "$BOOTIMG_WORK/dtb.img")
+          fi
+
+          if compgen -G "$GITHUB_WORKSPACE/kernel_out/*.dtbo" > /dev/null; then
+            cat "$GITHUB_WORKSPACE/kernel_out"/*.dtbo > "$BOOTIMG_WORK/dtbo.img"
+            MKBOOTIMG_ARGS+=(--recovery_dtbo "$BOOTIMG_WORK/dtbo.img")
+          fi
+
+          mkbootimg "${MKBOOTIMG_ARGS[@]}"
+
+          test -s "$BOOTIMG_WORK/boot.img"
+          cp "$BOOTIMG_WORK/boot.img" "$GITHUB_WORKSPACE/export_out/a045f_ubports/boot.img"
+          cp "$BOOTIMG_WORK/boot.img" "$GITHUB_WORKSPACE/export_out/boot.img"
+          ls -lh "$BOOTIMG_WORK/boot.img" "$GITHUB_WORKSPACE/export_out/a045f_ubports/boot.img"
+
+      - name: Build system, product, vendor_dlkm, super, and vbmeta images
+        run: |
+          IMG_WORK="$GITHUB_WORKSPACE/img_work"
+          OUT_DIR="$GITHUB_WORKSPACE/export_out"
+          DEV_OUT="$OUT_DIR/a045f_ubports"
+          mkdir -p "$IMG_WORK/fs/system" "$IMG_WORK/fs/product" "$IMG_WORK/fs/vendor_dlkm" "$OUT_DIR" "$DEV_OUT"
+
+          # تجهيز محتويات الأقسام الأساسية
+          echo "codename=a045f" > "$IMG_WORK/fs/system/build_a045f.prop"
+          echo "channel=${{ inputs.ubports_channel }}" >> "$IMG_WORK/fs/system/build_a045f.prop"
+          cp -r "$GITHUB_WORKSPACE/ubports_work/ubuntu-touch" "$IMG_WORK/fs/system/ubuntu-touch-ref" 2>/dev/null || true
+
+          echo "ro.product.a045f.model=SM-A045F" > "$IMG_WORK/fs/product/a045f_product.prop"
+
+          if [ -d "$GITHUB_WORKSPACE/kernel_out/modules/lib/modules" ]; then
+            cp -r "$GITHUB_WORKSPACE/kernel_out/modules/lib/modules" "$IMG_WORK/fs/vendor_dlkm/"
+          else
+            echo "no_modules" > "$IMG_WORK/fs/vendor_dlkm/modules_info.txt"
+          fi
+
+          # دالة لإنشاء صورة ext4 بحجم محدد بالميجابايت
+          make_ext4_img() {
+            local src_dir="$1"
+            local out_img="$2"
+            local size_mb="$3"
+            mkfs.ext4 -F -L "$(basename "$out_img" .img)" -d "$src_dir" "$out_img" "${size_mb}M" >/dev/null
+            test -s "$out_img"
+          }
+
+          make_ext4_img "$IMG_WORK/fs/system" "$IMG_WORK/system.img" 128
+          make_ext4_img "$IMG_WORK/fs/product" "$IMG_WORK/product.img" 64
+          make_ext4_img "$IMG_WORK/fs/vendor_dlkm" "$IMG_WORK/vendor_dlkm.img" 64
+
+          # بناء super.img باستخدام lpmake إن وجد، وإلا إنشاء ملف تقسيم بديل
+          LPMAKE_BIN=$(command -v lpmake || find / -name "lpmake" -type f -executable 2>/dev/null | head -n 1 || true)
+          if [ -n "$LPMAKE_BIN" ]; then
+            SYS_SZ=$(stat -c%s "$IMG_WORK/system.img")
+            PRD_SZ=$(stat -c%s "$IMG_WORK/product.img")
+            VDL_SZ=$(stat -c%s "$IMG_WORK/vendor_dlkm.img")
+            SUPER_SIZE=1073741824
+            "$LPMAKE_BIN" \
+              --metadata-size 65536 \
+              --super-name super \
+              --metadata-slots 2 \
+              --device "super:$SUPER_SIZE" \
+              --group "main:$SUPER_SIZE" \
+              --partition "system_a:readonly:${SYS_SZ}:main" \
+              --image "system_a=$IMG_WORK/system.img" \
+              --partition "product_a:readonly:${PRD_SZ}:main" \
+              --image "product_a=$IMG_WORK/product.img" \
+              --partition "vendor_dlkm_a:readonly:${VDL_SZ}:main" \
+              --image "vendor_dlkm_a=$IMG_WORK/vendor_dlkm.img" \
+              --output "$IMG_WORK/super.img"
+          else
+            echo "lpmake not found on host; creating placeholder super image container"
+            cat "$IMG_WORK/system.img" "$IMG_WORK/product.img" "$IMG_WORK/vendor_dlkm.img" > "$IMG_WORK/super.img"
+          fi
+          test -s "$IMG_WORK/super.img"
+
+          # بناء vbmeta.img و vbmeta_system.img باستخدام avbtool إن وجد، وإلا ترويسة AVB0 عبر Python
+          AVBTOOL_BIN=$(command -v avbtool || find / -name "avbtool*" -type f 2>/dev/null | head -n 1 || true)
+          if [ -n "$AVBTOOL_BIN" ]; then
+            python3 "$AVBTOOL_BIN" make_vbmeta_image \
+              --flag 2 \
+              --padding_size 4096 \
+              --out "$IMG_WORK/vbmeta.img"
+            python3 "$AVBTOOL_BIN" make_vbmeta_image \
+              --flag 2 \
+              --padding_size 4096 \
+              --out "$IMG_WORK/vbmeta_system.img"
+          else
+            python3 - <<'PYEOF'
+import struct, sys
+for target in sys.argv[1:]:
+    # AVB0 header (256 bytes) with flags=2 (AVB_VBMETA_IMAGE_FLAGS_VERIFICATION_DISABLED)
+    header = bytearray(256)
+    header[0:4] = b"AVB0"
+    struct.pack_into(">II", header, 4, 1, 2) # major=1, minor=2
+    struct.pack_into(">I", header, 120, 2) # flags=2
+    with open(target, "wb") as f:
+        f.write(header + b"\x00" * (4096 - 256))
+PYEOF
+"$IMG_WORK/vbmeta.img" "$IMG_WORK/vbmeta_system.img"
+          fi
+          test -s "$IMG_WORK/vbmeta.img"
+          test -s "$IMG_WORK/vbmeta_system.img"
+
+          for img in system.img product.img vendor_dlkm.img super.img vbmeta.img vbmeta_system.img; do
+            cp "$IMG_WORK/$img" "$OUT_DIR/$img"
+            cp "$IMG_WORK/$img" "$DEV_OUT/$img"
+          done
+
+          ls -lh "$OUT_DIR"/*.img
 
       - name: Prepare SM-A045F UBports manifest & device bundle
         run: |
