@@ -164,16 +164,24 @@ jobs:
           RAMDISK_FILE="$BOOTIMG_WORK/ramdisk.cpio.gz"
           printf '' | gzip -c > "$RAMDISK_FILE"
 
+          DTB_PATH=""
           DTB_ARG=()
           if compgen -G "$GITHUB_WORKSPACE/kernel_out/*.dtb" > /dev/null; then
             cat "$GITHUB_WORKSPACE/kernel_out"/*.dtb > "$BOOTIMG_WORK/dtb.img"
-            DTB_ARG=(--dtb "$BOOTIMG_WORK/dtb.img")
+            if [ -s "$BOOTIMG_WORK/dtb.img" ]; then
+              DTB_PATH="$BOOTIMG_WORK/dtb.img"
+              DTB_ARG=(--dtb "$DTB_PATH")
+            fi
           fi
 
+          DTBO_PATH=""
           DTBO_ARG=()
           if compgen -G "$GITHUB_WORKSPACE/kernel_out/*.dtbo" > /dev/null; then
             cat "$GITHUB_WORKSPACE/kernel_out"/*.dtbo > "$BOOTIMG_WORK/dtbo.img"
-            DTBO_ARG=(--recovery_dtbo "$BOOTIMG_WORK/dtbo.img")
+            if [ -s "$BOOTIMG_WORK/dtbo.img" ]; then
+              DTBO_PATH="$BOOTIMG_WORK/dtbo.img"
+              DTBO_ARG=(--recovery_dtbo "$DTBO_PATH")
+            fi
           fi
 
           if command -v mkbootimg >/dev/null 2>&1 && mkbootimg \
@@ -189,15 +197,15 @@ jobs:
             echo "Built boot.img via mkbootimg successfully"
           else
             echo "Fallback: building Android Boot Image v2 container with Python"
-            python3 -c 'import struct, sys; k, r, out, ps, base, cmd = sys.argv[1:7]; dtb = sys.argv[7] if len(sys.argv)>7 and sys.argv[7] else ""; dtbo = sys.argv[8] if len(sys.argv)>8 and sys.argv[8] else ""; ps = int(ps); base = int(base, 16); kd = open(k,"rb").read(); rd = open(r,"rb").read(); dd = open(dtb,"rb").read() if dtb else b""; td = open(dtbo,"rb").read() if dtbo else b""; pad = lambda b: b + b"\x00"*((ps - len(b)%ps)%ps); h = bytearray(ps); h[0:8] = b"ANDROID!"; struct.pack_into("<10I", h, 8, len(kd), base+0x8000, len(rd), base+0x1000000, 0, base+0x100000, 0, ps, len(td), (2<<32)|ps); cb = cmd.encode()[:1536]; h[48:48+len(cb)] = cb; open(out,"wb").write(bytes(h)+pad(kd)+pad(rd)+pad(td)+pad(dd))' \
+            python3 -c 'import struct, sys; k, r, out, ps, base, cmd, dtb, dtbo = sys.argv[1:9]; ps = int(ps); base = int(base, 16); kd = open(k,"rb").read(); rd = open(r,"rb").read(); dd = open(dtb,"rb").read() if dtb else b""; td = open(dtbo,"rb").read() if dtbo else b""; pad = lambda b: b + b"\x00"*((ps - len(b)%ps)%ps); h = bytearray(ps); h[0:8] = b"ANDROID!"; struct.pack_into("<10I", h, 8, len(kd), base+0x8000, len(rd), base+0x1000000, 0, base+0x100000, 0, ps, len(td), (2<<32)|ps); cb = cmd.encode()[:1536]; h[48:48+len(cb)] = cb; open(out,"wb").write(bytes(h)+pad(kd)+pad(rd)+pad(td)+pad(dd))' \
               "$GITHUB_WORKSPACE/kernel_out/vmlinuz" \
               "$RAMDISK_FILE" \
               "$BOOTIMG_WORK/boot.img" \
               "$PAGESIZE" \
               "$BASE_ADDR" \
               "$CMDLINE" \
-              "${BOOTIMG_WORK}/dtb.img" \
-              "${BOOTIMG_WORK}/dtbo.img"
+              "$DTB_PATH" \
+              "$DTBO_PATH"
           fi
 
           test -s "$BOOTIMG_WORK/boot.img"
