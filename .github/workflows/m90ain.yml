@@ -30,8 +30,9 @@ jobs:
           sudo apt-get install -y \
             git python3 python3-pip python3-venv openssl kpartx udev bc bison flex \
             libssl-dev libncurses-dev build-essential device-tree-compiler \
-            android-sdk-libsparse-utils e2fsprogs mkbootimg wget tar xz-utils cpio zip unzip file \
+            android-sdk-libsparse-utils e2fsprogs wget tar xz-utils cpio zip unzip file \
             jq curl ca-certificates
+          pip3 install --break-system-packages --no-cache-dir mkbootimg || true
 
       - name: Download GCC & Clang Toolchain
         run: |
@@ -144,8 +145,6 @@ jobs:
           BOOTIMG_WORK="$GITHUB_WORKSPACE/bootimg_work"
           mkdir -p "$BOOTIMG_WORK" "$GITHUB_WORKSPACE/export_out/a045f_ubports"
 
-          which mkbootimg || { echo "mkbootimg not found"; exit 1; }
-
           PAGESIZE=$(grep -rn "BOARD_KERNEL_PAGESIZE" "$GITHUB_WORKSPACE/a04_trees/device/" 2>/dev/null | head -n 1 | grep -oE '[0-9]+' || true)
           BASE_ADDR=$(grep -rn "BOARD_KERNEL_BASE" "$GITHUB_WORKSPACE/a04_trees/device/" 2>/dev/null | head -n 1 | grep -oE '0x[0-9a-fA-F]+' || true)
           CMDLINE=$(grep -rn "BOARD_KERNEL_CMDLINE" "$GITHUB_WORKSPACE/a04_trees/device/" 2>/dev/null | head -n 1 | sed -E 's/.*:= *//' | tr -d '"' || true)
@@ -157,27 +156,41 @@ jobs:
           RAMDISK_FILE="$BOOTIMG_WORK/ramdisk.cpio.gz"
           printf '' | gzip -c > "$RAMDISK_FILE"
 
-          MKBOOTIMG_ARGS=(
-            --kernel "$GITHUB_WORKSPACE/kernel_out/vmlinuz"
-            --ramdisk "$RAMDISK_FILE"
-            --cmdline "$CMDLINE"
-            --base "$BASE_ADDR"
-            --pagesize "$PAGESIZE"
-            --header_version 2
-            --output "$BOOTIMG_WORK/boot.img"
-          )
-
+          DTB_ARG=()
           if compgen -G "$GITHUB_WORKSPACE/kernel_out/*.dtb" > /dev/null; then
             cat "$GITHUB_WORKSPACE/kernel_out"/*.dtb > "$BOOTIMG_WORK/dtb.img"
-            MKBOOTIMG_ARGS+=(--dtb "$BOOTIMG_WORK/dtb.img")
+            DTB_ARG=(--dtb "$BOOTIMG_WORK/dtb.img")
           fi
 
+          DTBO_ARG=()
           if compgen -G "$GITHUB_WORKSPACE/kernel_out/*.dtbo" > /dev/null; then
             cat "$GITHUB_WORKSPACE/kernel_out"/*.dtbo > "$BOOTIMG_WORK/dtbo.img"
-            MKBOOTIMG_ARGS+=(--recovery_dtbo "$BOOTIMG_WORK/dtbo.img")
+            DTBO_ARG=(--recovery_dtbo "$BOOTIMG_WORK/dtbo.img")
           fi
 
-          mkbootimg "${MKBOOTIMG_ARGS[@]}"
+          if mkbootimg \
+            --kernel "$GITHUB_WORKSPACE/kernel_out/vmlinuz" \
+            --ramdisk "$RAMDISK_FILE" \
+            --cmdline "$CMDLINE" \
+            --base "$BASE_ADDR" \
+            --pagesize "$PAGESIZE" \
+            --header_version 2 \
+            "${DTB_ARG[@]}" \
+            "${DTBO_ARG[@]}" \
+            --output "$BOOTIMG_WORK/boot.img"; then
+            echo "Built boot.img via mkbootimg successfully"
+          else
+            echo "Fallback: building Android Boot Image v2 container with Python"
+            python3 -c 'import math, struct, sys; k, r, out, ps, base, cmd = sys.argv[1:7]; dtb = sys.argv[7] if len(sys.argv)>7 and sys.argv[7] else ""; dtbo = sys.argv[8] if len(sys.argv)>8 and sys.argv[8] else ""; ps = int(ps); base = int(base, 16); kd = open(k,"rb").read(); rd = open(r,"rb").read(); dd = open(dtb,"rb").read() if dtb else b""; td = open(dtbo,"rb").read() if dtbo else b""; pad = lambda b: b + b"\x00"*((ps - len(b)%ps)%ps); h = bytearray(ps); h[0:8] = b"ANDROID!"; struct.pack_into("<10I", h, 8, len(kd), base+0x8000, len(rd), base+0x1000000, 0, base+0x100000, 0, ps, len(td), (2<<32)|ps); h[48:48+len(cmd.encode()[:1536])] = cmd.encode()[:1536]; open(out,"wb").write(bytes(h)+pad(kd)+pad(rd)+pad(td)+pad(dd))' \
+              "$GITHUB_WORKSPACE/kernel_out/vmlinuz" \
+              "$RAMDISK_FILE" \
+              "$BOOTIMG_WORK/boot.img" \
+              "$PAGESIZE" \
+              "$BASE_ADDR" \
+              "$CMDLINE" \
+              "${BOOTIMG_WORK}/dtb.img" \
+              "${BOOTIMG_WORK}/dtbo.img"
+          fi
 
           test -s "$BOOTIMG_WORK/boot.img"
           cp "$BOOTIMG_WORK/boot.img" "$GITHUB_WORKSPACE/export_out/a045f_ubports/boot.img"
