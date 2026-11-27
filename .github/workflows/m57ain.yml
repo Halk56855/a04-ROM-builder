@@ -123,6 +123,10 @@ jobs:
 
           make "${MAKE_COMMON[@]}" INSTALL_MOD_PATH="$GITHUB_WORKSPACE/kernel_out/modules" modules_install || true
 
+          if [ -f out/include/config/kernel.release ]; then
+            cat out/include/config/kernel.release > "$GITHUB_WORKSPACE/kernel_out/kernel.release"
+          fi
+
           if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
             cp out/arch/arm64/boot/Image.gz-dtb "$GITHUB_WORKSPACE/kernel_out/vmlinuz"
           elif [ -f out/arch/arm64/boot/Image.gz ]; then
@@ -153,12 +157,24 @@ jobs:
 
           find "$KRN_DIR/src_files/lib/modules" -type l \( -name "source" -o -name "build" \) -delete 2>/dev/null || true
 
-          KVER=$(ls -1 "$KRN_DIR/src_files/lib/modules" 2>/dev/null | head -n 1 || true)
+          KVER=$(cat "$GITHUB_WORKSPACE/kernel_out/kernel.release" 2>/dev/null | tr -d '[:space:]' || true)
+          if [ -z "$KVER" ]; then
+            KVER=$(ls -1 "$KRN_DIR/src_files/lib/modules" 2>/dev/null | head -n 1 || true)
+          fi
           if [ -z "$KVER" ]; then
             KVER="4.19.191-ga112ae5ab930"
-            mkdir -p "$KRN_DIR/src_files/lib/modules/$KVER/kernel"
           fi
+
+          mkdir -p "$KRN_DIR/src_files/lib/modules/$KVER/kernel"
           depmod -b "$KRN_DIR/src_files" "$KVER" 2>/dev/null || true
+          if [ ! -f "$KRN_DIR/src_files/lib/modules/$KVER/modules.dep" ]; then
+            touch "$KRN_DIR/src_files/lib/modules/$KVER/modules.dep"
+            touch "$KRN_DIR/src_files/lib/modules/$KVER/modules.dep.bin"
+            touch "$KRN_DIR/src_files/lib/modules/$KVER/modules.alias"
+            touch "$KRN_DIR/src_files/lib/modules/$KVER/modules.alias.bin"
+            touch "$KRN_DIR/src_files/lib/modules/$KVER/modules.symbols"
+            touch "$KRN_DIR/src_files/lib/modules/$KVER/modules.symbols.bin"
+          fi
 
           PAGESIZE=$(grep -rn "BOARD_KERNEL_PAGESIZE" "$GITHUB_WORKSPACE/a04_trees/device/" 2>/dev/null | head -n 1 | grep -oE '[0-9]+' || true)
           BASE_ADDR=$(grep -rn "BOARD_KERNEL_BASE" "$GITHUB_WORKSPACE/a04_trees/device/" 2>/dev/null | head -n 1 | grep -oE '0x[0-9a-fA-F]+' || true)
@@ -210,7 +226,7 @@ jobs:
           "
           EOF
 
-          cat <<'EOF' > "$KRN_DIR/APKBUILD"
+          cat <<EOF > "$KRN_DIR/APKBUILD"
           pkgname=linux-samsung-a045f
           pkgver=4.19.0
           pkgrel=0
@@ -219,16 +235,17 @@ jobs:
           arch="aarch64"
           license="GPL-2.0-only"
           depends="postmarketos-mkinitfs"
+          _flavor="${KVER}"
           options="!strip !check !tracedeps pmb:cross-native"
           source=""
 
           package() {
-              mkdir -p "$pkgdir/boot" "$pkgdir/lib/modules"
-              cp "$startdir/src_files/vmlinuz" "$pkgdir/boot/vmlinuz"
-              cp "$startdir/src_files"/*.dtb "$pkgdir/boot/" 2>/dev/null || true
-              cp "$startdir/src_files"/*.dtbo "$pkgdir/boot/" 2>/dev/null || true
-              if [ -d "$startdir/src_files/lib/modules" ] && [ "$(ls -A "$startdir/src_files/lib/modules" 2>/dev/null)" ]; then
-                  cp -r "$startdir/src_files/lib/modules"/* "$pkgdir/lib/modules/" 2>/dev/null || true
+              mkdir -p "\$pkgdir/boot" "\$pkgdir/lib/modules"
+              cp "$startdir/src_files/vmlinuz" "\$pkgdir/boot/vmlinuz-${KVER}"
+              cp "$startdir/src_files"/*.dtb "\$pkgdir/boot/" 2>/dev/null || true
+              cp "$startdir/src_files"/*.dtbo "\$pkgdir/boot/" 2>/dev/null || true
+              if [ -d "$startdir/src_files/lib/modules" ] && [ "\$(ls -A "$startdir/src_files/lib/modules" 2>/dev/null)" ]; then
+                  cp -r "$startdir/src_files/lib/modules"/* "\$pkgdir/lib/modules/" 2>/dev/null || true
               fi
           }
           EOF
