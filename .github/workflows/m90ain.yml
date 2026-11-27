@@ -68,18 +68,35 @@ jobs:
 
       - name: Clone UBports repos and A04 trees
         run: |
-          mkdir -p "$GITHUB_WORKSPACE/ubports_work" "$GITHUB_WORKSPACE/a04_trees"
+          mkdir -p "$GITHUB_WORKSPACE/ubports_work/extras" "$GITHUB_WORKSPACE/a04_trees"
 
           git clone --depth=1 https://github.com/ubports/ubports-installer.git \
             "$GITHUB_WORKSPACE/ubports_work/ubports-installer"
-          git clone --depth=1 https://github.com/ubports/installer-configs.git \
-            "$GITHUB_WORKSPACE/ubports_work/installer-configs"
-          git clone --depth=1 --branch "${{ inputs.ubports_channel }}" \
-            https://gitlab.com/ubports/development/ubuntu-touch.git \
-            "$GITHUB_WORKSPACE/ubports_work/ubuntu-touch" || \
-          git clone --depth=1 \
-            https://gitlab.com/ubports/development/ubuntu-touch.git \
-            "$GITHUB_WORKSPACE/ubports_work/ubuntu-touch"
+
+          EXTRA_REPOS=(
+            "installer-configs|https://github.com/ubports/installer-configs.git"
+            "ubports-pdk|https://github.com/ubports/ubports-pdk.git"
+            "docs.ubports.com|https://gitlab.com/ubports/docs/docs.ubports.com.git"
+            "promise-android-tools|https://github.com/ubports/promise-android-tools.git"
+            "utqemu|https://github.com/ubports/utqemu.git"
+            "build-tools|https://gitlab.com/ubports/infrastructure/build-tools.git"
+            "ubuntu-touch|https://gitlab.com/ubports/development/ubuntu-touch.git"
+          )
+
+          for entry in "${EXTRA_REPOS[@]}"; do
+            name="${entry%%|*}"
+            url="${entry#*|}"
+            target="$GITHUB_WORKSPACE/ubports_work/extras/$name"
+            if [ "$name" = "ubuntu-touch" ]; then
+              git clone --depth=1 --branch "${{ inputs.ubports_channel }}" "$url" "$target" || \
+              git clone --depth=1 "$url" "$target" || true
+            else
+              git clone --depth=1 "$url" "$target" || true
+            fi
+          done
+
+          ln -sfn "$GITHUB_WORKSPACE/ubports_work/extras/installer-configs" "$GITHUB_WORKSPACE/ubports_work/installer-configs"
+          ln -sfn "$GITHUB_WORKSPACE/ubports_work/extras/ubuntu-touch" "$GITHUB_WORKSPACE/ubports_work/ubuntu-touch"
 
           git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_device_samsung_a04.git \
             "$GITHUB_WORKSPACE/a04_trees/device"
@@ -88,7 +105,9 @@ jobs:
           git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_kernel_samsung_a04.git \
             "$GITHUB_WORKSPACE/a04_trees/kernel"
 
+          echo "=== Cloned UBports work & extras ==="
           ls -la "$GITHUB_WORKSPACE/ubports_work"
+          ls -la "$GITHUB_WORKSPACE/ubports_work/extras"
 
       - name: Download and extract real Ubuntu Touch arm64 rootfs
         run: |
@@ -362,8 +381,8 @@ jobs:
             mkdir -p "$IMG_WORK/fs/system/ubuntu-touch-rootfs"
             cp -r "$GITHUB_WORKSPACE/rootfs_work/extracted"/* "$IMG_WORK/fs/system/ubuntu-touch-rootfs/" 2>/dev/null || true
           fi
-          if [ -d "$GITHUB_WORKSPACE/ubports_work/ubuntu-touch" ]; then
-            cp -r "$GITHUB_WORKSPACE/ubports_work/ubuntu-touch" "$IMG_WORK/fs/system/ubuntu-touch-ref" 2>/dev/null || true
+          if [ -d "$GITHUB_WORKSPACE/ubports_work/extras/ubuntu-touch" ]; then
+            cp -r "$GITHUB_WORKSPACE/ubports_work/extras/ubuntu-touch" "$IMG_WORK/fs/system/ubuntu-touch-ref" 2>/dev/null || true
             rm -rf "$IMG_WORK/fs/system/ubuntu-touch-ref/.git"
           fi
 
@@ -464,8 +483,8 @@ jobs:
 
       - name: Prepare SM-A045F UBports manifest & device bundle
         run: |
-          mkdir -p "$GITHUB_WORKSPACE/export_out/a045f_ubports"
-          CFG_DIR="$GITHUB_WORKSPACE/ubports_work/installer-configs"
+          mkdir -p "$GITHUB_WORKSPACE/export_out/a045f_ubports/ubports-extras"
+          CFG_DIR="$GITHUB_WORKSPACE/ubports_work/extras/installer-configs"
 
           find "$CFG_DIR" -maxdepth 4 -iname "*samsung*" -o -iname "*a04*" 2>/dev/null || true
 
@@ -499,7 +518,17 @@ jobs:
           EOF
 
           cp -r "$GITHUB_WORKSPACE/kernel_out" "$GITHUB_WORKSPACE/export_out/a045f_ubports/kernel"
-          cp -r "$CFG_DIR" "$GITHUB_WORKSPACE/export_out/a045f_ubports/installer-configs"
+          if [ -d "$CFG_DIR" ]; then
+            cp -r "$CFG_DIR" "$GITHUB_WORKSPACE/export_out/a045f_ubports/installer-configs"
+          fi
+
+          for extra in ubports-pdk docs.ubports.com promise-android-tools utqemu build-tools; do
+            if [ -d "$GITHUB_WORKSPACE/ubports_work/extras/$extra" ]; then
+              cp -r "$GITHUB_WORKSPACE/ubports_work/extras/$extra" "$GITHUB_WORKSPACE/export_out/a045f_ubports/ubports-extras/$extra" 2>/dev/null || true
+              rm -rf "$GITHUB_WORKSPACE/export_out/a045f_ubports/ubports-extras/$extra/.git"
+            fi
+          done
+
           find "$GITHUB_WORKSPACE/a04_trees" -maxdepth 4 \( -iname "*dtbo*.img" -o -iname "*vbmeta*.img" \) -exec cp {} "$GITHUB_WORKSPACE/export_out/a045f_ubports/" \; 2>/dev/null || true
 
       - name: Setup Node.js 24 & pnpm
