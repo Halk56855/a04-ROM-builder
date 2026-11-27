@@ -26,7 +26,7 @@ jobs:
           sudo apt-get install -y \
             git python3 python3-pip openssl kpartx udev bc bison flex \
             libssl-dev libncurses-dev build-essential device-tree-compiler \
-            android-sdk-libsparse-utils wget tar xz-utils cpio zip unzip file
+            android-sdk-libsparse-utils wget tar xz-utils cpio zip unzip file kmod
 
       - name: Download GCC & Clang Toolchain
         run: |
@@ -137,14 +137,23 @@ jobs:
           PMAPORTS_DIR="/home/runner/.local/var/pmbootstrap/cache_git/pmaports"
           DEV_DIR="$PMAPORTS_DIR/device/testing/device-samsung-a045f"
           KRN_DIR="$PMAPORTS_DIR/device/testing/linux-samsung-a045f"
+          rm -rf "$DEV_DIR" "$KRN_DIR"
           mkdir -p "$DEV_DIR" "$KRN_DIR/src_files/modules"
 
           cp "$GITHUB_WORKSPACE/kernel_out/vmlinuz" "$KRN_DIR/src_files/vmlinuz"
           cp "$GITHUB_WORKSPACE/kernel_out"/*.dtb "$KRN_DIR/src_files/" 2>/dev/null || true
           cp "$GITHUB_WORKSPACE/kernel_out"/*.dtbo "$KRN_DIR/src_files/" 2>/dev/null || true
           if [ -d "$GITHUB_WORKSPACE/kernel_out/modules/lib/modules" ]; then
-            cp -r "$GITHUB_WORKSPACE/kernel_out/modules/lib/modules"/* "$KRN_DIR/src_files/modules/" 2>/dev/null || true
+            cp -rL "$GITHUB_WORKSPACE/kernel_out/modules/lib/modules"/* "$KRN_DIR/src_files/modules/" 2>/dev/null || true
           fi
+
+          # Remove cyclic/broken symlinks like 'source' and 'build' inside modules
+          find "$KRN_DIR/src_files/modules" -type l \( -name "source" -o -name "build" \) -delete 2>/dev/null || true
+          for kver_dir in "$KRN_DIR/src_files/modules"/*; do
+            if [ -d "$kver_dir" ]; then
+              depmod -b "$KRN_DIR/src_files" "$(basename "$kver_dir")" 2>/dev/null || true
+            fi
+          done
 
           PAGESIZE=$(grep -rn "BOARD_KERNEL_PAGESIZE" "$GITHUB_WORKSPACE/a04_trees/device/" 2>/dev/null | head -n 1 | grep -oE '[0-9]+' || true)
           BASE_ADDR=$(grep -rn "BOARD_KERNEL_BASE" "$GITHUB_WORKSPACE/a04_trees/device/" 2>/dev/null | head -n 1 | grep -oE '0x[0-9a-fA-F]+' || true)
