@@ -191,7 +191,6 @@ jobs:
           DEV_OUT="$OUT_DIR/a045f_ubports"
           mkdir -p "$IMG_WORK/fs/system" "$IMG_WORK/fs/product" "$IMG_WORK/fs/vendor_dlkm" "$OUT_DIR" "$DEV_OUT"
 
-          # تجهيز محتويات الأقسام الأساسية
           echo "codename=a045f" > "$IMG_WORK/fs/system/build_a045f.prop"
           echo "channel=${{ inputs.ubports_channel }}" >> "$IMG_WORK/fs/system/build_a045f.prop"
           cp -r "$GITHUB_WORKSPACE/ubports_work/ubuntu-touch" "$IMG_WORK/fs/system/ubuntu-touch-ref" 2>/dev/null || true
@@ -204,7 +203,6 @@ jobs:
             echo "no_modules" > "$IMG_WORK/fs/vendor_dlkm/modules_info.txt"
           fi
 
-          # دالة لإنشاء صورة ext4 بحجم محدد بالميجابايت
           make_ext4_img() {
             local src_dir="$1"
             local out_img="$2"
@@ -217,7 +215,6 @@ jobs:
           make_ext4_img "$IMG_WORK/fs/product" "$IMG_WORK/product.img" 64
           make_ext4_img "$IMG_WORK/fs/vendor_dlkm" "$IMG_WORK/vendor_dlkm.img" 64
 
-          # بناء super.img باستخدام lpmake إن وجد، وإلا إنشاء ملف تقسيم بديل
           LPMAKE_BIN=$(command -v lpmake || find / -name "lpmake" -type f -executable 2>/dev/null | head -n 1 || true)
           if [ -n "$LPMAKE_BIN" ]; then
             SYS_SZ=$(stat -c%s "$IMG_WORK/system.img")
@@ -243,7 +240,6 @@ jobs:
           fi
           test -s "$IMG_WORK/super.img"
 
-          # بناء vbmeta.img و vbmeta_system.img باستخدام avbtool إن وجد، وإلا ترويسة AVB0 عبر Python
           AVBTOOL_BIN=$(command -v avbtool || find / -name "avbtool*" -type f 2>/dev/null | head -n 1 || true)
           if [ -n "$AVBTOOL_BIN" ]; then
             python3 "$AVBTOOL_BIN" make_vbmeta_image \
@@ -255,18 +251,7 @@ jobs:
               --padding_size 4096 \
               --out "$IMG_WORK/vbmeta_system.img"
           else
-            python3 - <<'PYEOF'
-import struct, sys
-for target in sys.argv[1:]:
-    # AVB0 header (256 bytes) with flags=2 (AVB_VBMETA_IMAGE_FLAGS_VERIFICATION_DISABLED)
-    header = bytearray(256)
-    header[0:4] = b"AVB0"
-    struct.pack_into(">II", header, 4, 1, 2) # major=1, minor=2
-    struct.pack_into(">I", header, 120, 2) # flags=2
-    with open(target, "wb") as f:
-        f.write(header + b"\x00" * (4096 - 256))
-PYEOF
-"$IMG_WORK/vbmeta.img" "$IMG_WORK/vbmeta_system.img"
+            python3 -c 'import struct, sys; [open(t, "wb").write(bytearray(b"AVB0" + struct.pack(">II", 1, 2) + b"\x00"*112 + struct.pack(">I", 2) + b"\x00"*(4096-124))) for t in sys.argv[1:]]' "$IMG_WORK/vbmeta.img" "$IMG_WORK/vbmeta_system.img"
           fi
           test -s "$IMG_WORK/vbmeta.img"
           test -s "$IMG_WORK/vbmeta_system.img"
