@@ -35,7 +35,7 @@ jobs:
             git python3 python3-pip python3-venv openssl kpartx udev bc bison flex \
             libssl-dev libncurses-dev build-essential device-tree-compiler \
             android-sdk-libsparse-utils e2fsprogs wget tar xz-utils cpio zip unzip file \
-            jq curl ca-certificates
+            jq curl ca-certificates busybox-static
           pip3 install --break-system-packages --no-cache-dir mkbootimg || true
 
       - name: Download GCC & Clang Toolchain
@@ -66,7 +66,7 @@ jobs:
 
           cd "$GITHUB_WORKSPACE"
 
-      - name: Clone UBports repos and A04 trees
+      - name: Clone UBports, Halium, libhybris, LXC repos and A04 trees
         run: |
           mkdir -p "$GITHUB_WORKSPACE/ubports_work/extras" "$GITHUB_WORKSPACE/a04_trees"
 
@@ -81,6 +81,11 @@ jobs:
             "utqemu|https://github.com/ubports/utqemu.git"
             "build-tools|https://gitlab.com/ubports/infrastructure/build-tools.git"
             "ubuntu-touch|https://gitlab.com/ubports/development/ubuntu-touch.git"
+            "libhybris|https://github.com/libhybris/libhybris.git"
+            "libgbinder|https://github.com/mer-hybris/libgbinder.git"
+            "initramfs-tools-halium|https://github.com/Halium/initramfs-tools-halium.git"
+            "halium-boot|https://github.com/Halium/halium-boot.git"
+            "lxc-android|https://github.com/Halium/lxc-android.git"
           )
 
           for entry in "${EXTRA_REPOS[@]}"; do
@@ -105,8 +110,7 @@ jobs:
           git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_kernel_samsung_a04.git \
             "$GITHUB_WORKSPACE/a04_trees/kernel"
 
-          echo "=== Cloned UBports work & extras ==="
-          ls -la "$GITHUB_WORKSPACE/ubports_work"
+          echo "=== Cloned UBports, Halium & extras ==="
           ls -la "$GITHUB_WORKSPACE/ubports_work/extras"
 
       - name: Download and extract real Ubuntu Touch arm64 rootfs
@@ -206,7 +210,6 @@ jobs:
           FINAL_SZ=$(stat -c%s "$OUT_DIR/ubuntu-touch-arm64-rootfs.tar.gz" 2>/dev/null || echo 0)
           echo "Final exported rootfs size: ${FINAL_SZ} bytes"
           ls -lh "$ROOTFS_ARCHIVE" "$OUT_DIR/ubuntu-touch-arm64-rootfs.tar.gz"
-          ls -la "$ROOTFS_WORK/extracted" | head -n 25
 
       - name: Build SM-A045F Kernel with a04_defconfig & Halium/LXC
         run: |
@@ -252,9 +255,12 @@ jobs:
           CONFIG_SYSVIPC=y
           CONFIG_POSIX_MQUEUE=y
           CONFIG_USER_NS=y
+          CONFIG_BLK_CGROUP=y
           CONFIG_CGROUP_PIDS=y
           CONFIG_CGROUP_DEVICE=y
           CONFIG_CGROUP_FREEZER=y
+          CONFIG_DEVTMPFS=y
+          CONFIG_DEVTMPFS_MOUNT=y
           CONFIG_BLK_DEV_LOOP=y
           CONFIG_SQUASHFS=y
           CONFIG_OVERLAY_FS=y
@@ -275,6 +281,11 @@ jobs:
           else
             cat out/halium_lxc.config >> out/.config
             yes "" | make "${MAKE_COMMON[@]}" olddefconfig
+          fi
+
+          if [ -f "$GITHUB_WORKSPACE/ubports_work/extras/halium-boot/check-kernel-config" ]; then
+            python3 "$GITHUB_WORKSPACE/ubports_work/extras/halium-boot/check-kernel-config" out/.config -w || true
+            make "${MAKE_COMMON[@]}" olddefconfig
           fi
 
           if command -v ld.lld >/dev/null 2>&1; then
@@ -298,7 +309,7 @@ jobs:
           find out/arch/arm64/boot/dts -name "*.dtbo" -exec cp {} "$GITHUB_WORKSPACE/kernel_out/" \; 2>/dev/null || true
           ls -lh "$GITHUB_WORKSPACE/kernel_out"
 
-      - name: Build halium-boot.img, ramdisk, initramfs, and boot.img
+      - name: Build Halium initramfs (ramdisk.cpio.gz & initramfs.img) and boot images
         run: |
           BOOTIMG_WORK="$GITHUB_WORKSPACE/bootimg_work"
           INITRAMFS_SRC="$BOOTIMG_WORK/initramfs_root"
@@ -317,21 +328,43 @@ jobs:
             BASE_ADDR="0x40078000"
           fi
           if [ -z "$CMDLINE" ]; then
-            CMDLINE="bootopt=64S3,32N2,64N2"
+            CMDLINE="bootopt=64S3,32N2,64N2 console=tty0"
           fi
 
-          echo "Using PAGESIZE=$PAGESIZE BASE_ADDR=$BASE_ADDR CMDLINE=$CMDLINE"
-
           RAMDISK_FILE="$BOOTIMG_WORK/ramdisk.cpio.gz"
-          mkdir -p "$INITRAMFS_SRC"/{bin,sbin,etc,proc,sys,dev,mnt,system,system_ext,vendor,vendor_dlkm,odm,product,lib/modules,android-rootfs,lxc}
+          mkdir -p "$INITRAMFS_SRC"/{bin,sbin,etc,proc,sys,dev,mnt,root,system,system_ext,vendor,vendor_dlkm,odm,product,lib/modules,android,android-rootfs,var/lib/lxc/android}
 
-          printf '#!/bin/sh\nmount -t proc proc /proc\nmount -t sysfs sysfs /sys\nmount -t devtmpfs devtmpfs /dev 2>/dev/null || true\nmkdir -p /dev/pts /dev/shm /sys/fs/cgroup\nmount -t devpts devpts /dev/pts 2>/dev/null || true\necho "Halium/LXC initramfs initialized for SM-A045F"\nexec /bin/sh\n' > "$INITRAMFS_SRC/init"
+          if [ -x /bin/busybox ]; then
+            cp /bin/busybox "$INITRAMFS_SRC/bin/busybox"
+            for cmd in sh mount umount mkdir ln switch_root chroot mknod sleep cat echo ls dmesg modprobe; do
+              ln -sf /bin/busybox "$INITRAMFS_SRC/bin/$cmd" 2>/dev/null || true
+            done
+          fi
+
+          if [ -d "$GITHUB_WORKSPACE/ubports_work/extras/initramfs-tools-halium" ]; then
+            mkdir -p "$INITRAMFS_SRC/usr/share/halium-initramfs-tools"
+            cp -r "$GITHUB_WORKSPACE/ubports_work/extras/initramfs-tools-halium"/* "$INITRAMFS_SRC/usr/share/halium-initramfs-tools/" 2>/dev/null || true
+            rm -rf "$INITRAMFS_SRC/usr/share/halium-initramfs-tools/.git"
+          fi
+
+          cat <<'HALIUM_INIT' > "$INITRAMFS_SRC/init"
+          #!/bin/sh
+          /bin/busybox mount -t proc proc /proc 2>/dev/null || true
+          /bin/busybox mount -t sysfs sysfs /sys 2>/dev/null || true
+          /bin/busybox mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
+          /bin/busybox mkdir -p /dev/pts /dev/shm /sys/fs/cgroup /root /android /var/lib/lxc/android/rootfs
+          /bin/busybox mount -t devpts devpts /dev/pts 2>/dev/null || true
+
+          if [ -x /root/sbin/init ]; then
+            exec /bin/busybox switch_root /root /sbin/init --log-target=kmsg
+          fi
+          exec /bin/sh
+          HALIUM_INIT
           chmod 755 "$INITRAMFS_SRC/init"
           ln -sf /init "$INITRAMFS_SRC/sbin/init" 2>/dev/null || true
 
           printf "codename=a045f\nmodel=SM-A045F\nchannel=%s\nhalium_lxc=1\n" "${{ inputs.ubports_channel }}" > "$INITRAMFS_SRC/etc/a045f-initramfs.conf"
-          printf "/dev/block/by-name/system /system ext4 ro 0 0\n/dev/block/by-name/vendor /vendor ext4 ro 0 0\n/dev/block/by-name/odm /odm ext4 ro 0 0\n/dev/block/by-name/product /product ext4 ro 0 0\n/dev/block/by-name/system_ext /system_ext ext4 ro 0 0\n" > "$INITRAMFS_SRC/etc/fstab.a045f"
-          printf "lxc.uts.name = a045f-android\nlxc.arch = aarch64\nlxc.tty.max = 4\nlxc.pty.max = 128\nlxc.cgroup.dir = /lxc/android\n" > "$INITRAMFS_SRC/lxc/android.conf"
+          printf "/dev/block/by-name/system /android/system ext4 ro 0 0\n/dev/block/by-name/vendor /android/vendor ext4 ro 0 0\n/dev/block/by-name/odm /android/odm ext4 ro 0 0\n/dev/block/by-name/product /android/product ext4 ro 0 0\n/dev/block/by-name/system_ext /android/system_ext ext4 ro 0 0\n" > "$INITRAMFS_SRC/etc/fstab.a045f"
 
           if [ -d "$GITHUB_WORKSPACE/kernel_out/modules/lib/modules" ]; then
             cp -r "$GITHUB_WORKSPACE/kernel_out/modules/lib/modules"/* "$INITRAMFS_SRC/lib/modules/" 2>/dev/null || true
@@ -403,7 +436,7 @@ jobs:
 
           ls -lh "$BOOTIMG_WORK/boot.img" "$BOOTIMG_WORK/halium-boot.img" "$OUT_DIR/boot.img" "$OUT_DIR/halium-boot.img" "$OUT_DIR/initramfs.img" "$OUT_DIR/ramdisk.cpio.gz"
 
-      - name: Build android-rootfs.img, libhybris bundle, and partition images
+      - name: Build libhybris-a045f.tar.gz, LXC bundle, android-rootfs.img, and partition images
         run: |
           IMG_WORK="$GITHUB_WORKSPACE/img_work"
           OUT_DIR="$GITHUB_WORKSPACE/export_out"
@@ -416,25 +449,78 @@ jobs:
             "$IMG_WORK/fs/vendor_dlkm" \
             "$IMG_WORK/fs/odm" \
             "$IMG_WORK/android_rootfs" \
-            "$IMG_WORK/libhybris" \
+            "$IMG_WORK/libhybris/var/lib/lxc/android" \
+            "$IMG_WORK/libhybris/etc/halium" \
             "$OUT_DIR" "$DEV_OUT"
 
+          for repo in libhybris libgbinder lxc-android halium-boot initramfs-tools-halium; do
+            if [ -d "$GITHUB_WORKSPACE/ubports_work/extras/$repo" ]; then
+              mkdir -p "$IMG_WORK/libhybris/src/$repo"
+              cp -r "$GITHUB_WORKSPACE/ubports_work/extras/$repo"/* "$IMG_WORK/libhybris/src/$repo/" 2>/dev/null || true
+              rm -rf "$IMG_WORK/libhybris/src/$repo/.git"
+            fi
+          done
+
+          if [ -d "$GITHUB_WORKSPACE/ubports_work/extras/lxc-android/var/lib/lxc/android" ]; then
+            cp -r "$GITHUB_WORKSPACE/ubports_work/extras/lxc-android/var/lib/lxc/android"/* "$IMG_WORK/libhybris/var/lib/lxc/android/" 2>/dev/null || true
+          fi
+
+          cat <<'LXC_CONF' > "$IMG_WORK/libhybris/var/lib/lxc/android/config"
+          lxc.uts.name = a045f-android
+          lxc.arch = aarch64
+          lxc.tty.max = 4
+          lxc.pty.max = 128
+          lxc.cgroup.dir = /lxc/android
+          lxc.apparmor.profile = unconfined
+          lxc.mount.entry = /android/system system none bind,ro 0 0
+          lxc.mount.entry = /android/vendor vendor none bind,ro 0 0
+          lxc.mount.entry = /android/odm odm none bind,ro 0 0
+          lxc.mount.entry = /android/product product none bind,ro 0 0
+          lxc.mount.entry = /android/system_ext system_ext none bind,ro 0 0
+          lxc.mount.entry = /data/system-data data none bind,rw 0 0
+          LXC_CONF
+
+          cat <<'PRE_START' > "$IMG_WORK/libhybris/var/lib/lxc/android/pre-start.sh"
+          #!/bin/sh
+          set -e
+          mkdir -p /android/system /android/vendor /android/odm /android/product /android/system_ext /data/system-data
+          for mp in system vendor odm product system_ext; do
+            if [ -d "/android/$mp" ] && [ -d "/var/lib/lxc/android/rootfs/$mp" ]; then
+              mount --bind "/android/$mp" "/var/lib/lxc/android/rootfs/$mp" 2>/dev/null || true
+            fi
+          done
+          if [ -d "/data/system-data" ] && [ -d "/var/lib/lxc/android/rootfs/data" ]; then
+            mount --bind "/data/system-data" "/var/lib/lxc/android/rootfs/data" 2>/dev/null || true
+          fi
+          PRE_START
+          chmod 755 "$IMG_WORK/libhybris/var/lib/lxc/android/pre-start.sh"
+
+          cat <<'HYBRIS_CONF' > "$IMG_WORK/libhybris/etc/halium/a045f-halium.conf"
+          device=a045f
+          model=SM-A045F
+          soc=mt6765
+          halium_lxc=enabled
+          hybris_egl=enabled
+          hybris_hwcomposer=enabled
+          HYBRIS_CONF
+
+          tar -czf "$IMG_WORK/libhybris-a045f.tar.gz" -C "$IMG_WORK/libhybris" .
+          test -s "$IMG_WORK/libhybris-a045f.tar.gz"
+          cp "$IMG_WORK/libhybris-a045f.tar.gz" "$OUT_DIR/libhybris-a045f.tar.gz"
+          cp "$IMG_WORK/libhybris-a045f.tar.gz" "$DEV_OUT/libhybris-a045f.tar.gz"
+
           mkdir -p "$IMG_WORK/android_rootfs"/{system,vendor,odm,product,system_ext,dev,proc,sys,data,cache,mnt,sbin}
-          printf "ro.product.model=SM-A045F\nro.product.device=a045f\nro.halium.lxc=enabled\n" > "$IMG_WORK/android_rootfs/system/build.prop"
+          printf "ro.product.model=SM-A045F\nro.product.device=a045f\nro.hardware=mt6765\nro.halium.lxc=enabled\n" > "$IMG_WORK/android_rootfs/system/build.prop"
+          cp -r "$IMG_WORK/libhybris/var/lib/lxc/android"/* "$IMG_WORK/android_rootfs/sbin/" 2>/dev/null || true
           mkfs.ext4 -F -L "android_rootfs" -d "$IMG_WORK/android_rootfs" "$IMG_WORK/android-rootfs.img" "128M" >/dev/null
           test -s "$IMG_WORK/android-rootfs.img"
           cp "$IMG_WORK/android-rootfs.img" "$OUT_DIR/android-rootfs.img"
           cp "$IMG_WORK/android-rootfs.img" "$DEV_OUT/android-rootfs.img"
 
-          printf "device=a045f\nmodel=SM-A045F\nlxc_container=android\nhybris_egl=1\nhybris_hwcomposer=1\n" > "$IMG_WORK/libhybris/a045f-libhybris.conf"
-          find "$GITHUB_WORKSPACE/ubports_work/extras" -maxdepth 3 \( -iname "*hybris*" -o -iname "*lxc*" -o -iname "*halium*" \) -exec cp -r {} "$IMG_WORK/libhybris/" \; 2>/dev/null || true
-          tar -czf "$IMG_WORK/libhybris-a045f.tar.gz" -C "$IMG_WORK/libhybris" .
-          cp "$IMG_WORK/libhybris-a045f.tar.gz" "$OUT_DIR/libhybris-a045f.tar.gz"
-          cp "$IMG_WORK/libhybris-a045f.tar.gz" "$DEV_OUT/libhybris-a045f.tar.gz"
-
           echo "codename=a045f" > "$IMG_WORK/fs/system/build_a045f.prop"
           echo "channel=${{ inputs.ubports_channel }}" >> "$IMG_WORK/fs/system/build_a045f.prop"
           echo "halium.lxc.enabled=true" >> "$IMG_WORK/fs/system/build_a045f.prop"
+          tar -xzf "$IMG_WORK/libhybris-a045f.tar.gz" -C "$IMG_WORK/fs/system" 2>/dev/null || true
           if [ -d "$GITHUB_WORKSPACE/rootfs_work/extracted" ]; then
             mkdir -p "$IMG_WORK/fs/system/ubuntu-touch-rootfs"
             cp -r "$GITHUB_WORKSPACE/rootfs_work/extracted"/* "$IMG_WORK/fs/system/ubuntu-touch-rootfs/" 2>/dev/null || true
@@ -557,7 +643,7 @@ jobs:
             BASE_ADDR="0x40078000"
           fi
           if [ -z "$CMDLINE" ]; then
-            CMDLINE="bootopt=64S3,32N2,64N2"
+            CMDLINE="bootopt=64S3,32N2,64N2 console=tty0"
           fi
 
           cat <<EOF > "$GITHUB_WORKSPACE/export_out/a045f_ubports/a045f-device-spec.json"
@@ -575,7 +661,9 @@ jobs:
               "lxc": true,
               "android_rootfs": "android-rootfs.img",
               "libhybris": "libhybris-a045f.tar.gz",
-              "boot_image": "halium-boot.img"
+              "boot_image": "halium-boot.img",
+              "ramdisk": "ramdisk.cpio.gz",
+              "initramfs": "initramfs.img"
             },
             "ubports_channel": "${{ inputs.ubports_channel }}"
           }
@@ -586,7 +674,7 @@ jobs:
             cp -r "$CFG_DIR" "$GITHUB_WORKSPACE/export_out/a045f_ubports/installer-configs"
           fi
 
-          for extra in ubports-pdk docs.ubports.com promise-android-tools utqemu build-tools; do
+          for extra in ubports-pdk docs.ubports.com promise-android-tools utqemu build-tools libhybris libgbinder initramfs-tools-halium halium-boot lxc-android; do
             if [ -d "$GITHUB_WORKSPACE/ubports_work/extras/$extra" ]; then
               cp -r "$GITHUB_WORKSPACE/ubports_work/extras/$extra" "$GITHUB_WORKSPACE/export_out/a045f_ubports/ubports-extras/$extra" 2>/dev/null || true
               rm -rf "$GITHUB_WORKSPACE/export_out/a045f_ubports/ubports-extras/$extra/.git"
