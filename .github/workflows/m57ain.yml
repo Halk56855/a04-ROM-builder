@@ -226,7 +226,7 @@ jobs:
           "
           EOF
 
-          cat <<'EOF' > "$KRN_DIR/APKBUILD"
+          cat <<EOF > "$KRN_DIR/APKBUILD"
           pkgname=linux-samsung-a045f
           pkgver=4.19.0
           pkgrel=0
@@ -235,16 +235,17 @@ jobs:
           arch="aarch64"
           license="GPL-2.0-only"
           depends="postmarketos-mkinitfs"
+          _flavor="${KVER}"
           options="!strip !check !tracedeps pmb:cross-native"
           source=""
 
           package() {
-              mkdir -p "$pkgdir/boot" "$pkgdir/lib/modules"
-              cp "$startdir/src_files/vmlinuz" "$pkgdir/boot/vmlinuz"
-              cp "$startdir/src_files"/*.dtb "$pkgdir/boot/" 2>/dev/null || true
-              cp "$startdir/src_files"/*.dtbo "$pkgdir/boot/" 2>/dev/null || true
-              if [ -d "$startdir/src_files/lib/modules" ] && [ "$(ls -A "$startdir/src_files/lib/modules" 2>/dev/null)" ]; then
-                  cp -r "$startdir/src_files/lib/modules"/* "$pkgdir/lib/modules/" 2>/dev/null || true
+              mkdir -p "\$pkgdir/boot" "\$pkgdir/lib/modules"
+              cp "$startdir/src_files/vmlinuz" "\$pkgdir/boot/vmlinuz-${KVER}"
+              cp "$startdir/src_files"/*.dtb "\$pkgdir/boot/" 2>/dev/null || true
+              cp "$startdir/src_files"/*.dtbo "\$pkgdir/boot/" 2>/dev/null || true
+              if [ -d "$startdir/src_files/lib/modules" ] && [ "\$(ls -A "$startdir/src_files/lib/modules" 2>/dev/null)" ]; then
+                  cp -r "$startdir/src_files/lib/modules"/* "\$pkgdir/lib/modules/" 2>/dev/null || true
               fi
           }
           EOF
@@ -259,12 +260,17 @@ jobs:
           PMAPORTS_DIR="/home/runner/.local/var/pmbootstrap/cache_git/pmaports"
           PMB_ARGS=(-p "$PMAPORTS_DIR" -w "$GITHUB_WORKSPACE/pm_work")
 
+          dump_log() {
+            if [ -f "$GITHUB_WORKSPACE/pm_work/log.txt" ]; then
+              echo "=== Lines around ^^^ in log.txt ==="
+              grep -B 15 -A 2 '\^\^\^\^\^' "$GITHUB_WORKSPACE/pm_work/log.txt" | tail -n 80 || tail -n 80 "$GITHUB_WORKSPACE/pm_work/log.txt"
+            fi
+          }
+
           run_pmb() {
             if ! pmbootstrap "${PMB_ARGS[@]}" "$@"; then
               echo "=== pmbootstrap failed: $* ==="
-              if [ -f "$GITHUB_WORKSPACE/pm_work/log.txt" ]; then
-                tail -n 80 "$GITHUB_WORKSPACE/pm_work/log.txt"
-              fi
+              dump_log
               return 1
             fi
           }
@@ -280,9 +286,7 @@ jobs:
 
           if ! printf "1234\n1234\n" | pmbootstrap "${PMB_ARGS[@]}" install; then
             echo "=== pmbootstrap install failed ==="
-            if [ -f "$GITHUB_WORKSPACE/pm_work/log.txt" ]; then
-              tail -n 80 "$GITHUB_WORKSPACE/pm_work/log.txt"
-            fi
+            dump_log
             exit 1
           fi
 
