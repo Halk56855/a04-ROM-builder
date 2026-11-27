@@ -173,7 +173,7 @@ jobs:
           cp -r "$CFG_DIR" "$GITHUB_WORKSPACE/export_out/a045f_ubports/installer-configs"
           find "$GITHUB_WORKSPACE/a04_trees" -maxdepth 4 \( -iname "*dtbo*.img" -o -iname "*vbmeta*.img" \) -exec cp {} "$GITHUB_WORKSPACE/export_out/a045f_ubports/" \; 2>/dev/null || true
 
-      - name: Setup Node.js 24
+      - name: Setup Node.js 24 & pnpm
         if: ${{ inputs.build_installer == 'true' }}
         uses: actions/setup-node@v4
         with:
@@ -183,12 +183,15 @@ jobs:
         if: ${{ inputs.build_installer == 'true' }}
         run: |
           node -v
-          npm -v
+          corepack enable || true
+          corepack prepare pnpm@11.25.0 --activate || npm install -g pnpm@11.25.0
+          pnpm -v
+
           cd "$GITHUB_WORKSPACE/ubports_work/ubports-installer"
           if [ -f package.json ]; then
-            npm ci --no-audit --no-fund || npm install --no-audit --no-fund
-            if npm run | grep -q "build"; then
-              npm run build || true
+            pnpm install --no-frozen-lockfile || pnpm install
+            if pnpm run | grep -q "build"; then
+              pnpm run build || true
             fi
           fi
           mkdir -p "$GITHUB_WORKSPACE/export_out/ubports-installer"
