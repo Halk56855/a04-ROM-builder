@@ -20,6 +20,9 @@ jobs:
   build-a045f:
     runs-on: ubuntu-24.04
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Install host dependencies
         run: |
           sudo apt-get update
@@ -138,21 +141,24 @@ jobs:
           DEV_DIR="$PMAPORTS_DIR/device/testing/device-samsung-a045f"
           KRN_DIR="$PMAPORTS_DIR/device/testing/linux-samsung-a045f"
           rm -rf "$DEV_DIR" "$KRN_DIR"
-          mkdir -p "$DEV_DIR" "$KRN_DIR/src_files/modules"
+          mkdir -p "$DEV_DIR" "$KRN_DIR/src_files/lib/modules"
 
           cp "$GITHUB_WORKSPACE/kernel_out/vmlinuz" "$KRN_DIR/src_files/vmlinuz"
           cp "$GITHUB_WORKSPACE/kernel_out"/*.dtb "$KRN_DIR/src_files/" 2>/dev/null || true
           cp "$GITHUB_WORKSPACE/kernel_out"/*.dtbo "$KRN_DIR/src_files/" 2>/dev/null || true
+
           if [ -d "$GITHUB_WORKSPACE/kernel_out/modules/lib/modules" ]; then
-            cp -rL "$GITHUB_WORKSPACE/kernel_out/modules/lib/modules"/* "$KRN_DIR/src_files/modules/" 2>/dev/null || true
+            cp -rL "$GITHUB_WORKSPACE/kernel_out/modules/lib/modules"/* "$KRN_DIR/src_files/lib/modules/" 2>/dev/null || true
           fi
 
-          find "$KRN_DIR/src_files/modules" -type l \( -name "source" -o -name "build" \) -delete 2>/dev/null || true
-          for kver_dir in "$KRN_DIR/src_files/modules"/*; do
-            if [ -d "$kver_dir" ]; then
-              depmod -b "$KRN_DIR/src_files" "$(basename "$kver_dir")" 2>/dev/null || true
-            fi
-          done
+          find "$KRN_DIR/src_files/lib/modules" -type l \( -name "source" -o -name "build" \) -delete 2>/dev/null || true
+
+          KVER=$(ls -1 "$KRN_DIR/src_files/lib/modules" 2>/dev/null | head -n 1 || true)
+          if [ -z "$KVER" ]; then
+            KVER="4.19.191-ga112ae5ab930"
+            mkdir -p "$KRN_DIR/src_files/lib/modules/$KVER/kernel"
+          fi
+          depmod -b "$KRN_DIR/src_files" "$KVER" 2>/dev/null || true
 
           PAGESIZE=$(grep -rn "BOARD_KERNEL_PAGESIZE" "$GITHUB_WORKSPACE/a04_trees/device/" 2>/dev/null | head -n 1 | grep -oE '[0-9]+' || true)
           BASE_ADDR=$(grep -rn "BOARD_KERNEL_BASE" "$GITHUB_WORKSPACE/a04_trees/device/" 2>/dev/null | head -n 1 | grep -oE '0x[0-9a-fA-F]+' || true)
@@ -204,7 +210,7 @@ jobs:
           "
           EOF
 
-          cat <<'EOF' > "$KRN_DIR/APKBUILD"
+          cat <<EOF > "$KRN_DIR/APKBUILD"
           pkgname=linux-samsung-a045f
           pkgver=4.19.0
           pkgrel=0
@@ -213,16 +219,17 @@ jobs:
           arch="aarch64"
           license="GPL-2.0-only"
           depends="postmarketos-mkinitfs"
+          _flavor="${KVER}"
           options="!strip !check !tracedeps pmb:cross-native"
           source=""
 
           package() {
-              mkdir -p "$pkgdir/boot" "$pkgdir/lib/modules"
-              cp "$startdir/src_files/vmlinuz" "$pkgdir/boot/vmlinuz"
-              cp "$startdir/src_files"/*.dtb "$pkgdir/boot/" 2>/dev/null || true
-              cp "$startdir/src_files"/*.dtbo "$pkgdir/boot/" 2>/dev/null || true
-              if [ -d "$startdir/src_files/modules" ] && [ "$(ls -A "$startdir/src_files/modules" 2>/dev/null)" ]; then
-                  cp -r "$startdir/src_files/modules"/* "$pkgdir/lib/modules/" 2>/dev/null || true
+              mkdir -p "\$pkgdir/boot" "\$pkgdir/lib/modules"
+              cp "$startdir/src_files/vmlinuz" "\$pkgdir/boot/vmlinuz-${KVER}"
+              cp "$startdir/src_files"/*.dtb "\$pkgdir/boot/" 2>/dev/null || true
+              cp "$startdir/src_files"/*.dtbo "\$pkgdir/boot/" 2>/dev/null || true
+              if [ -d "$startdir/src_files/lib/modules" ] && [ "$(ls -A "$startdir/src_files/lib/modules" 2>/dev/null)" ]; then
+                  cp -r "$startdir/src_files/lib/modules"/* "\$pkgdir/lib/modules/" 2>/dev/null || true
               fi
           }
           EOF
@@ -265,6 +272,12 @@ jobs:
 
           cp -r "$GITHUB_WORKSPACE/kernel_out" "$GITHUB_WORKSPACE/export_out/raw_kernel"
           find "$GITHUB_WORKSPACE/a04_trees" -maxdepth 4 \( -iname "*dtbo*.img" -o -iname "*vbmeta*.img" \) -exec cp {} "$GITHUB_WORKSPACE/export_out/" \; 2>/dev/null || true
+
+          if [ -d "$GITHUB_WORKSPACE/custom_imgs" ] && [ "$(ls -A "$GITHUB_WORKSPACE/custom_imgs" 2>/dev/null)" ]; then
+            mkdir -p "$GITHUB_WORKSPACE/export_out/custom_imgs"
+            cp -r "$GITHUB_WORKSPACE/custom_imgs"/* "$GITHUB_WORKSPACE/export_out/custom_imgs/" 2>/dev/null || true
+          fi
+
           ls -lh "$GITHUB_WORKSPACE/export_out"
 
       - name: Upload all built files
