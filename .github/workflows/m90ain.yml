@@ -261,7 +261,10 @@ jobs:
 
           echo "codename=a045f" > "$IMG_WORK/fs/system/build_a045f.prop"
           echo "channel=${{ inputs.ubports_channel }}" >> "$IMG_WORK/fs/system/build_a045f.prop"
-          cp -r "$GITHUB_WORKSPACE/ubports_work/ubuntu-touch" "$IMG_WORK/fs/system/ubuntu-touch-ref" 2>/dev/null || true
+          if [ -d "$GITHUB_WORKSPACE/ubports_work/ubuntu-touch" ]; then
+            cp -r "$GITHUB_WORKSPACE/ubports_work/ubuntu-touch" "$IMG_WORK/fs/system/ubuntu-touch-ref" 2>/dev/null || true
+            rm -rf "$IMG_WORK/fs/system/ubuntu-touch-ref/.git"
+          fi
 
           echo "ro.system_ext.a045f.build=1" > "$IMG_WORK/fs/system_ext/a045f_system_ext.prop"
           echo "ro.product.a045f.model=SM-A045F" > "$IMG_WORK/fs/product/a045f_product.prop"
@@ -270,6 +273,7 @@ jobs:
 
           if [ -d "$GITHUB_WORKSPACE/a04_trees/vendor" ]; then
             cp -r "$GITHUB_WORKSPACE/a04_trees/vendor" "$IMG_WORK/fs/vendor/a04_vendor_tree" 2>/dev/null || true
+            rm -rf "$IMG_WORK/fs/vendor/a04_vendor_tree/.git"
           fi
 
           if [ -d "$GITHUB_WORKSPACE/kernel_out/modules/lib/modules" ]; then
@@ -281,17 +285,24 @@ jobs:
           make_ext4_img() {
             local src_dir="$1"
             local out_img="$2"
-            local size_mb="$3"
-            mkfs.ext4 -F -L "$(basename "$out_img" .img)" -d "$src_dir" "$out_img" "${size_mb}M" >/dev/null
+            local min_mb="$3"
+            local used_mb
+            used_mb=$(du -sm "$src_dir" 2>/dev/null | awk '{print $1}')
+            : "${used_mb:=16}"
+            local calc_mb=$((used_mb * 2 + 64))
+            if [ "$calc_mb" -lt "$min_mb" ]; then
+              calc_mb="$min_mb"
+            fi
+            mkfs.ext4 -F -L "$(basename "$out_img" .img)" -d "$src_dir" "$out_img" "${calc_mb}M" >/dev/null
             test -s "$out_img"
           }
 
-          make_ext4_img "$IMG_WORK/fs/system" "$IMG_WORK/system.img" 128
-          make_ext4_img "$IMG_WORK/fs/system_ext" "$IMG_WORK/system_ext.img" 64
-          make_ext4_img "$IMG_WORK/fs/product" "$IMG_WORK/product.img" 64
-          make_ext4_img "$IMG_WORK/fs/vendor" "$IMG_WORK/vendor.img" 128
-          make_ext4_img "$IMG_WORK/fs/vendor_dlkm" "$IMG_WORK/vendor_dlkm.img" 64
-          make_ext4_img "$IMG_WORK/fs/odm" "$IMG_WORK/odm.img" 32
+          make_ext4_img "$IMG_WORK/fs/system" "$IMG_WORK/system.img" 512
+          make_ext4_img "$IMG_WORK/fs/system_ext" "$IMG_WORK/system_ext.img" 128
+          make_ext4_img "$IMG_WORK/fs/product" "$IMG_WORK/product.img" 128
+          make_ext4_img "$IMG_WORK/fs/vendor" "$IMG_WORK/vendor.img" 512
+          make_ext4_img "$IMG_WORK/fs/vendor_dlkm" "$IMG_WORK/vendor_dlkm.img" 128
+          make_ext4_img "$IMG_WORK/fs/odm" "$IMG_WORK/odm.img" 64
 
           LPMAKE_BIN=$(command -v lpmake || find / -name "lpmake" -type f -executable 2>/dev/null | head -n 1 || true)
           if [ -n "$LPMAKE_BIN" ]; then
@@ -301,7 +312,7 @@ jobs:
             VND_SZ=$(stat -c%s "$IMG_WORK/vendor.img")
             VDL_SZ=$(stat -c%s "$IMG_WORK/vendor_dlkm.img")
             ODM_SZ=$(stat -c%s "$IMG_WORK/odm.img")
-            SUPER_SIZE=1073741824
+            SUPER_SIZE=$((SYS_SZ + SYSE_SZ + PRD_SZ + VND_SZ + VDL_SZ + ODM_SZ + 268435456))
             "$LPMAKE_BIN" \
               --metadata-size 65536 \
               --super-name super \
