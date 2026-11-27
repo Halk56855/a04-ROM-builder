@@ -114,6 +114,12 @@ jobs:
             make "${MAKE_COMMON[@]}" "${{ inputs.fallback_defconfig }}"
           fi
 
+          if [ -x scripts/config ] && [ -f out/.config ]; then
+            ./scripts/config --file out/.config --enable CONFIG_VT --enable CONFIG_DRM_FBDEV_EMULATION
+          fi
+
+          make "${MAKE_COMMON[@]}" olddefconfig
+
           if command -v ld.lld >/dev/null 2>&1; then
             make "${MAKE_COMMON[@]}" LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip Image.gz dtbs modules || \
             make "${MAKE_COMMON[@]}" Image.gz dtbs modules
@@ -247,13 +253,21 @@ jobs:
           source="vmlinuz"
 
           package() {
-              mkdir -p "\$pkgdir/boot" "\$pkgdir/lib/modules"
+              mkdir -p "\$pkgdir/boot" "\$pkgdir/lib/modules/${KVER}/kernel"
               cp "\$srcdir/vmlinuz" "\$pkgdir/boot/vmlinuz-${KVER}"
               cp "/mnt/pmaports/device/testing/linux-samsung-a045f/src_files"/*.dtb "\$pkgdir/boot/" 2>/dev/null || true
               cp "/mnt/pmaports/device/testing/linux-samsung-a045f/src_files"/*.dtbo "\$pkgdir/boot/" 2>/dev/null || true
               if [ -d "/mnt/pmaports/device/testing/linux-samsung-a045f/src_files/lib/modules" ] && [ "\$(ls -A "/mnt/pmaports/device/testing/linux-samsung-a045f/src_files/lib/modules" 2>/dev/null)" ]; then
                   cp -r "/mnt/pmaports/device/testing/linux-samsung-a045f/src_files/lib/modules"/* "\$pkgdir/lib/modules/" 2>/dev/null || true
               fi
+              mkdir -p "\$pkgdir/lib/modules/${KVER}"
+              for f in modules.dep modules.dep.bin modules.alias modules.alias.bin modules.symbols modules.symbols.bin; do
+                  if [ -f "/mnt/pmaports/device/testing/linux-samsung-a045f/src_files/lib/modules/${KVER}/\$f" ]; then
+                      cp "/mnt/pmaports/device/testing/linux-samsung-a045f/src_files/lib/modules/${KVER}/\$f" "\$pkgdir/lib/modules/${KVER}/\$f"
+                  else
+                      touch "\$pkgdir/lib/modules/${KVER}/\$f"
+                  fi
+              done
           }
 
           sha512sums="
@@ -269,6 +283,9 @@ jobs:
           PMB_ARGS=(-p "$PMAPORTS_DIR" -w "$GITHUB_WORKSPACE/pm_work")
 
           dump_log() {
+            echo "=== Rootfs /boot and /lib/modules check ==="
+            ls -la "$GITHUB_WORKSPACE/pm_work/chroot_rootfs_samsung-a045f/boot" 2>/dev/null || true
+            ls -la "$GITHUB_WORKSPACE/pm_work/chroot_rootfs_samsung-a045f/lib/modules" 2>/dev/null || true
             if [ -f "$GITHUB_WORKSPACE/pm_work/log.txt" ]; then
               echo "=== Lines around ^^^ in log.txt ==="
               grep -B 15 -A 2 '\^\^\^\^\^' "$GITHUB_WORKSPACE/pm_work/log.txt" | tail -n 80 || tail -n 80 "$GITHUB_WORKSPACE/pm_work/log.txt"
