@@ -253,7 +253,7 @@ jobs:
           run_pmb build --force linux-samsung-a045f
           run_pmb build --force device-samsung-a045f
 
-          if ! printf "1234\n" | pmbootstrap "${PMB_ARGS[@]}" install; then
+          if ! printf "1234\n1234\n" | pmbootstrap "${PMB_ARGS[@]}" install; then
             echo "=== pmbootstrap install failed ==="
             if [ -f "$GITHUB_WORKSPACE/pm_work/log.txt" ]; then
               tail -n 80 "$GITHUB_WORKSPACE/pm_work/log.txt"
