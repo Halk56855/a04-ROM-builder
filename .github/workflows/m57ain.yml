@@ -147,7 +147,6 @@ jobs:
             cp -rL "$GITHUB_WORKSPACE/kernel_out/modules/lib/modules"/* "$KRN_DIR/src_files/modules/" 2>/dev/null || true
           fi
 
-          # Remove cyclic/broken symlinks like 'source' and 'build' inside modules
           find "$KRN_DIR/src_files/modules" -type l \( -name "source" -o -name "build" \) -delete 2>/dev/null || true
           for kver_dir in "$KRN_DIR/src_files/modules"/*; do
             if [ -d "$kver_dir" ]; then
@@ -183,6 +182,7 @@ jobs:
           pkgver=1
           pkgrel=0
           pkgdesc="Samsung Galaxy A04 SM-A045F device package"
+          url="https://github.com/A04-Trees-and-ROMs/android_device_samsung_a04"
           arch="aarch64"
           license="MIT"
           depends="linux-samsung-a045f postmarketos-base"
@@ -203,6 +203,7 @@ jobs:
           pkgver=4.19.0
           pkgrel=0
           pkgdesc="Prebuilt Clang kernel for Samsung Galaxy A04 SM-A045F"
+          url="https://github.com/A04-Trees-and-ROMs/android_kernel_samsung_a04"
           arch="aarch64"
           license="GPL-2.0-only"
           depends="postmarketos-mkinitfs"
