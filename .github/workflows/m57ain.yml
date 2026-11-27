@@ -137,7 +137,14 @@ jobs:
           PMAPORTS_DIR="/home/runner/.local/var/pmbootstrap/cache_git/pmaports"
           DEV_DIR="$PMAPORTS_DIR/device/testing/device-samsung-a045f"
           KRN_DIR="$PMAPORTS_DIR/device/testing/linux-samsung-a045f"
-          mkdir -p "$DEV_DIR" "$KRN_DIR"
+          mkdir -p "$DEV_DIR" "$KRN_DIR/src_files/modules"
+
+          cp "$GITHUB_WORKSPACE/kernel_out/vmlinuz" "$KRN_DIR/src_files/vmlinuz"
+          cp "$GITHUB_WORKSPACE/kernel_out"/*.dtb "$KRN_DIR/src_files/" 2>/dev/null || true
+          cp "$GITHUB_WORKSPACE/kernel_out"/*.dtbo "$KRN_DIR/src_files/" 2>/dev/null || true
+          if [ -d "$GITHUB_WORKSPACE/kernel_out/modules/lib/modules" ]; then
+            cp -r "$GITHUB_WORKSPACE/kernel_out/modules/lib/modules"/* "$KRN_DIR/src_files/modules/" 2>/dev/null || true
+          fi
 
           PAGESIZE=$(grep -rn "BOARD_KERNEL_PAGESIZE" "$GITHUB_WORKSPACE/a04_trees/device/" 2>/dev/null | head -n 1 | grep -oE '[0-9]+' || true)
           BASE_ADDR=$(grep -rn "BOARD_KERNEL_BASE" "$GITHUB_WORKSPACE/a04_trees/device/" 2>/dev/null | head -n 1 | grep -oE '0x[0-9a-fA-F]+' || true)
@@ -174,19 +181,15 @@ jobs:
           source="deviceinfo"
 
           build() {
-              devicepkg_build $startdir $pkgname
+              devicepkg_build "$startdir" "$pkgname"
           }
 
           package() {
-              devicepkg_package $startdir $pkgname
+              devicepkg_package "$startdir" "$pkgname"
           }
-
-          sha512sums="
-          SKIP  deviceinfo
-          "
           EOF
 
-          cat <<EOF > "$KRN_DIR/APKBUILD"
+          cat <<'EOF' > "$KRN_DIR/APKBUILD"
           pkgname=linux-samsung-a045f
           pkgver=4.19.0
           pkgrel=0
@@ -198,38 +201,46 @@ jobs:
           source=""
 
           package() {
-              mkdir -p "\$pkgdir/boot" "\$pkgdir/lib"
-              cp "$GITHUB_WORKSPACE/kernel_out/vmlinuz" "\$pkgdir/boot/vmlinuz"
-              cp "$GITHUB_WORKSPACE/kernel_out"/*.dtb "\$pkgdir/boot/" 2>/dev/null || true
-              cp "$GITHUB_WORKSPACE/kernel_out"/*.dtbo "\$pkgdir/boot/" 2>/dev/null || true
-              if [ -d "$GITHUB_WORKSPACE/kernel_out/modules/lib/modules" ]; then
-                  cp -r "$GITHUB_WORKSPACE/kernel_out/modules/lib/modules" "\$pkgdir/lib/"
+              mkdir -p "$pkgdir/boot" "$pkgdir/lib/modules"
+              cp "$startdir/src_files/vmlinuz" "$pkgdir/boot/vmlinuz"
+              cp "$startdir/src_files"/*.dtb "$pkgdir/boot/" 2>/dev/null || true
+              cp "$startdir/src_files"/*.dtbo "$pkgdir/boot/" 2>/dev/null || true
+              if [ -d "$startdir/src_files/modules" ] && [ "$(ls -A "$startdir/src_files/modules" 2>/dev/null)" ]; then
+                  cp -r "$startdir/src_files/modules"/* "$pkgdir/lib/modules/" 2>/dev/null || true
               fi
           }
           EOF
+
+          pmbootstrap -p "$PMAPORTS_DIR" -w "$GITHUB_WORKSPACE/pm_work" checksum device-samsung-a045f || true
+          pmbootstrap -p "$PMAPORTS_DIR" -w "$GITHUB_WORKSPACE/pm_work" checksum linux-samsung-a045f || true
 
       - name: Configure pmbootstrap and build all images
         run: |
           mkdir -p "$HOME/.config" "$GITHUB_WORKSPACE/pm_work" "$GITHUB_WORKSPACE/export_out"
 
-          chmod +x "$GITHUB_WORKSPACE/nura_work/pmbootstrap/pmbootstrap.py"
-          sudo ln -sf "$GITHUB_WORKSPACE/nura_work/pmbootstrap/pmbootstrap.py" /usr/local/bin/pmbootstrap
-          which pmbootstrap
-          pmbootstrap --version
-
           PMAPORTS_DIR="/home/runner/.local/var/pmbootstrap/cache_git/pmaports"
           PMB_ARGS=(-p "$PMAPORTS_DIR" -w "$GITHUB_WORKSPACE/pm_work")
 
-          yes "" | pmbootstrap "${PMB_ARGS[@]}" init || true
-          pmbootstrap "${PMB_ARGS[@]}" config device samsung-a045f || true
-          pmbootstrap "${PMB_ARGS[@]}" config ui "${{ inputs.ui_choice }}" || true
-          pmbootstrap "${PMB_ARGS[@]}" config hostname a045f || true
-          pmbootstrap "${PMB_ARGS[@]}" config timezone Asia/Bahrain || true
+          run_pmb() {
+            if ! pmbootstrap "${PMB_ARGS[@]}" "$@"; then
+              echo "=== pmbootstrap failed: $* ==="
+              if [ -f "$GITHUB_WORKSPACE/pm_work/log.txt" ]; then
+                tail -n 80 "$GITHUB_WORKSPACE/pm_work/log.txt"
+              fi
+              return 1
+            fi
+          }
 
-          pmbootstrap "${PMB_ARGS[@]}" build --force linux-samsung-a045f
-          pmbootstrap "${PMB_ARGS[@]}" build --force device-samsung-a045f
-          pmbootstrap "${PMB_ARGS[@]}" install
-          pmbootstrap "${PMB_ARGS[@]}" export --odin "$GITHUB_WORKSPACE/export_out" || pmbootstrap "${PMB_ARGS[@]}" export "$GITHUB_WORKSPACE/export_out"
+          yes "" | pmbootstrap "${PMB_ARGS[@]}" init || true
+          run_pmb config device samsung-a045f || true
+          run_pmb config ui "${{ inputs.ui_choice }}" || true
+          run_pmb config hostname a045f || true
+          run_pmb config timezone Asia/Bahrain || true
+
+          run_pmb build --force linux-samsung-a045f
+          run_pmb build --force device-samsung-a045f
+          run_pmb install
+          run_pmb export --odin "$GITHUB_WORKSPACE/export_out" || run_pmb export "$GITHUB_WORKSPACE/export_out"
 
           cp -r "$GITHUB_WORKSPACE/kernel_out" "$GITHUB_WORKSPACE/export_out/raw_kernel"
           find "$GITHUB_WORKSPACE/a04_trees" -maxdepth 4 \( -iname "*dtbo*.img" -o -iname "*vbmeta*.img" \) -exec cp {} "$GITHUB_WORKSPACE/export_out/" \; 2>/dev/null || true
