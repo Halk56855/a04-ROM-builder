@@ -131,8 +131,13 @@ jobs:
             cp out/arch/arm64/boot/Image.gz-dtb "$GITHUB_WORKSPACE/kernel_out/vmlinuz"
           elif [ -f out/arch/arm64/boot/Image.gz ]; then
             cp out/arch/arm64/boot/Image.gz "$GITHUB_WORKSPACE/kernel_out/vmlinuz"
-          else
+          elif [ -f out/arch/arm64/boot/Image ]; then
             cp out/arch/arm64/boot/Image "$GITHUB_WORKSPACE/kernel_out/vmlinuz"
+          fi
+
+          if [ ! -f "$GITHUB_WORKSPACE/kernel_out/vmlinuz" ]; then
+            echo "ERROR: vmlinuz was not generated!"
+            exit 1
           fi
 
           find out/arch/arm64/boot/dts -name "*.dtb" -exec cp {} "$GITHUB_WORKSPACE/kernel_out/" \; 2>/dev/null || true
@@ -147,6 +152,7 @@ jobs:
           rm -rf "$DEV_DIR" "$KRN_DIR"
           mkdir -p "$DEV_DIR" "$KRN_DIR/src_files/lib/modules"
 
+          cp "$GITHUB_WORKSPACE/kernel_out/vmlinuz" "$KRN_DIR/vmlinuz"
           cp "$GITHUB_WORKSPACE/kernel_out/vmlinuz" "$KRN_DIR/src_files/vmlinuz"
           cp "$GITHUB_WORKSPACE/kernel_out"/*.dtb "$KRN_DIR/src_files/" 2>/dev/null || true
           cp "$GITHUB_WORKSPACE/kernel_out"/*.dtbo "$KRN_DIR/src_files/" 2>/dev/null || true
@@ -200,6 +206,7 @@ jobs:
           EOF
 
           SHA512_DEVINFO=$(sha512sum "$DEV_DIR/deviceinfo" | awk '{print $1}')
+          SHA512_VMLINUZ=$(sha512sum "$KRN_DIR/vmlinuz" | awk '{print $1}')
 
           cat <<EOF > "$DEV_DIR/APKBUILD"
           pkgname=device-samsung-a045f
@@ -237,21 +244,22 @@ jobs:
           depends="postmarketos-mkinitfs"
           _flavor="${KVER}"
           options="!strip !check !tracedeps pmb:cross-native"
-          source=""
+          source="vmlinuz"
 
           package() {
               mkdir -p "\$pkgdir/boot" "\$pkgdir/lib/modules"
-              cp "$KRN_DIR/src_files/vmlinuz" "\$pkgdir/boot/vmlinuz-${KVER}"
-              cp "$KRN_DIR/src_files"/*.dtb "\$pkgdir/boot/" 2>/dev/null || true
-              cp "$KRN_DIR/src_files"/*.dtbo "\$pkgdir/boot/" 2>/dev/null || true
-              if [ -d "$KRN_DIR/src_files/lib/modules" ] && [ "\$(ls -A "$KRN_DIR/src_files/lib/modules" 2>/dev/null)" ]; then
-                  cp -r "$KRN_DIR/src_files/lib/modules"/* "\$pkgdir/lib/modules/" 2>/dev/null || true
+              cp "\$srcdir/vmlinuz" "\$pkgdir/boot/vmlinuz-${KVER}"
+              cp "/mnt/pmaports/device/testing/linux-samsung-a045f/src_files"/*.dtb "\$pkgdir/boot/" 2>/dev/null || true
+              cp "/mnt/pmaports/device/testing/linux-samsung-a045f/src_files"/*.dtbo "\$pkgdir/boot/" 2>/dev/null || true
+              if [ -d "/mnt/pmaports/device/testing/linux-samsung-a045f/src_files/lib/modules" ] && [ "\$(ls -A "/mnt/pmaports/device/testing/linux-samsung-a045f/src_files/lib/modules" 2>/dev/null)" ]; then
+                  cp -r "/mnt/pmaports/device/testing/linux-samsung-a045f/src_files/lib/modules"/* "\$pkgdir/lib/modules/" 2>/dev/null || true
               fi
           }
-          EOF
 
-          echo "=== Verifying KRN_DIR/APKBUILD ==="
-          cat "$KRN_DIR/APKBUILD"
+          sha512sums="
+          ${SHA512_VMLINUZ}  vmlinuz
+          "
+          EOF
 
       - name: Configure pmbootstrap and build all images
         run: |
