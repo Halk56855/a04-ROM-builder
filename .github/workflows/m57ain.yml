@@ -176,6 +176,7 @@ jobs:
           if [ -z "$KVER" ]; then
             KVER="4.19.191-ga112ae5ab930"
           fi
+          FLAVOR="a045f"
 
           mkdir -p "$KRN_DIR/src_files/lib/modules/$KVER/kernel"
           depmod -b "$KRN_DIR/src_files" "$KVER" 2>/dev/null || true
@@ -241,19 +242,21 @@ jobs:
 
           cat <<EOF > "$KRN_DIR/APKBUILD"
           pkgname=linux-samsung-a045f
-          pkgver=4.19.0
+          pkgver=4.19.191
           pkgrel=0
           pkgdesc="Prebuilt Clang kernel for Samsung Galaxy A04 SM-A045F"
           url="https://github.com/A04-Trees-and-ROMs/android_kernel_samsung_a04"
           arch="aarch64"
           license="GPL-2.0-only"
           depends="postmarketos-mkinitfs"
-          _flavor="${KVER}"
+          _flavor="${FLAVOR}"
           options="!strip !check !tracedeps pmb:cross-native"
           source="vmlinuz"
 
           package() {
-              mkdir -p "\$pkgdir/boot" "\$pkgdir/lib/modules/${KVER}/kernel"
+              mkdir -p "\$pkgdir/boot" "\$pkgdir/usr/share/kernel/${FLAVOR}" "\$pkgdir/lib/modules/${KVER}/kernel"
+              printf '%s\n' "${KVER}" > "\$pkgdir/usr/share/kernel/${FLAVOR}/kernel.release"
+              cp "\$srcdir/vmlinuz" "\$pkgdir/boot/vmlinuz-${FLAVOR}"
               cp "\$srcdir/vmlinuz" "\$pkgdir/boot/vmlinuz-${KVER}"
               cp "/mnt/pmaports/device/testing/linux-samsung-a045f/src_files"/*.dtb "\$pkgdir/boot/" 2>/dev/null || true
               cp "/mnt/pmaports/device/testing/linux-samsung-a045f/src_files"/*.dtbo "\$pkgdir/boot/" 2>/dev/null || true
@@ -283,8 +286,9 @@ jobs:
           PMB_ARGS=(-p "$PMAPORTS_DIR" -w "$GITHUB_WORKSPACE/pm_work")
 
           dump_log() {
-            echo "=== Rootfs /boot and /lib/modules check ==="
+            echo "=== Rootfs /boot, /usr/share/kernel and /lib/modules check ==="
             ls -la "$GITHUB_WORKSPACE/pm_work/chroot_rootfs_samsung-a045f/boot" 2>/dev/null || true
+            ls -la "$GITHUB_WORKSPACE/pm_work/chroot_rootfs_samsung-a045f/usr/share/kernel" 2>/dev/null || true
             ls -la "$GITHUB_WORKSPACE/pm_work/chroot_rootfs_samsung-a045f/lib/modules" 2>/dev/null || true
             if [ -f "$GITHUB_WORKSPACE/pm_work/log.txt" ]; then
               echo "=== Lines around ^^^ in log.txt ==="
