@@ -58,12 +58,15 @@ jobs:
 
       - name: Clone Nura repos and A04 trees
         run: |
+          PMAPORTS_DIR="/home/runner/.local/var/pmbootstrap/cache_git/pmaports"
           mkdir -p "$GITHUB_WORKSPACE/nura_work" "$GITHUB_WORKSPACE/a04_trees" \
                    "/home/runner/.local/var/pmbootstrap/cache_git"
+
           git clone --depth=1 https://gitlab.nura.eco/nura/pmbootstrap.git "$GITHUB_WORKSPACE/nura_work/pmbootstrap"
-          git clone --depth=1 https://gitlab.nura.eco/nura/pmaports.git "/home/runner/.local/var/pmbootstrap/cache_git/pmaports"
-          git -C "/home/runner/.local/var/pmbootstrap/cache_git/pmaports" remote add pmos https://gitlab.postmarketos.org/postmarketOS/pmaports.git || true
-          git -C "/home/runner/.local/var/pmbootstrap/cache_git/pmaports" remote -v
+          git clone --depth=1 https://gitlab.nura.eco/nura/pmaports.git "$PMAPORTS_DIR"
+          git -C "$PMAPORTS_DIR" remote add pmos https://gitlab.postmarketos.org/postmarketOS/pmaports.git || true
+          git -C "$PMAPORTS_DIR" fetch --depth=1 pmos main:refs/remotes/pmos/main || true
+          git -C "$PMAPORTS_DIR" show-ref | grep -E "pmos/main|HEAD|main" || true
 
           git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_device_samsung_a04.git "$GITHUB_WORKSPACE/a04_trees/device"
           git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_vendor_samsung_a04.git "$GITHUB_WORKSPACE/a04_trees/vendor"
