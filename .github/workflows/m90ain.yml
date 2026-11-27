@@ -140,10 +140,13 @@ jobs:
           find out/arch/arm64/boot/dts -name "*.dtbo" -exec cp {} "$GITHUB_WORKSPACE/kernel_out/" \; 2>/dev/null || true
           ls -lh "$GITHUB_WORKSPACE/kernel_out"
 
-      - name: Build boot.img from vmlinuz, dtb, and dtbo
+      - name: Build real ramdisk, initramfs, and boot.img
         run: |
           BOOTIMG_WORK="$GITHUB_WORKSPACE/bootimg_work"
-          mkdir -p "$BOOTIMG_WORK" "$GITHUB_WORKSPACE/export_out/a045f_ubports"
+          INITRAMFS_SRC="$BOOTIMG_WORK/initramfs_root"
+          OUT_DIR="$GITHUB_WORKSPACE/export_out"
+          DEV_OUT="$OUT_DIR/a045f_ubports"
+          mkdir -p "$BOOTIMG_WORK" "$INITRAMFS_SRC" "$OUT_DIR" "$DEV_OUT"
 
           PAGESIZE=$(grep -rn --exclude-dir=.git "BOARD_KERNEL_PAGESIZE" "$GITHUB_WORKSPACE/a04_trees/device/" 2>/dev/null | cut -d: -f3- | grep -oE '[0-9]+' | head -n 1 || true)
           BASE_ADDR=$(grep -rn --exclude-dir=.git "BOARD_KERNEL_BASE" "$GITHUB_WORKSPACE/a04_trees/device/" 2>/dev/null | cut -d: -f3- | grep -oE '0x[0-9a-fA-F]+' | head -n 1 || true)
@@ -162,7 +165,43 @@ jobs:
           echo "Using PAGESIZE=$PAGESIZE BASE_ADDR=$BASE_ADDR CMDLINE=$CMDLINE"
 
           RAMDISK_FILE="$BOOTIMG_WORK/ramdisk.cpio.gz"
-          printf '' | gzip -c > "$RAMDISK_FILE"
+          REF_BOOT=$(find "$GITHUB_WORKSPACE/a04_trees" "$GITHUB_WORKSPACE/ubports_work" -maxdepth 4 -iname "*boot*.img" 2>/dev/null | head -n 1 || true)
+
+          EXTRACTED_RAMDISK=0
+          if [ -n "$REF_BOOT" ] && [ -s "$REF_BOOT" ]; then
+            echo "Found reference boot image: $REF_BOOT"
+            python3 -c 'import struct, sys, zlib; data = open(sys.argv[1],"rb").read(); idx = data.find(b"ANDROID!"); sys.exit(1) if idx == -1 else None; ksz, _, rsz, _, _, _, _, ps = struct.unpack_from("<8I", data, idx+8); ps = ps if ps else 2048; pad = lambda n: ((n + ps - 1)//ps)*ps; roff = idx + ps + pad(ksz); rdata = data[roff:roff+rsz]; open(sys.argv[2],"wb").write(rdata); sys.exit(0 if len(rdata) > 128 else 1)' "$REF_BOOT" "$RAMDISK_FILE" && EXTRACTED_RAMDISK=1 || EXTRACTED_RAMDISK=0
+          fi
+
+          if [ "$EXTRACTED_RAMDISK" -eq 0 ]; then
+            echo "Building structured initramfs & ramdisk for SM-A045F (${{ inputs.ubports_channel }})"
+            mkdir -p "$INITRAMFS_SRC"/{bin,sbin,etc,proc,sys,dev,mnt,system,system_ext,vendor,vendor_dlkm,odm,product,lib/modules}
+
+            cat <<'INITEOF' > "$INITRAMFS_SRC/init"
+#!/bin/sh
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
+echo "Booting SM-A045F initramfs..."
+exec /bin/sh
+INITEOF
+            chmod 755 "$INITRAMFS_SRC/init"
+            ln -sf /init "$INITRAMFS_SRC/sbin/init" 2>/dev/null || true
+
+            printf "codename=a045f\nmodel=SM-A045F\nchannel=%s\n" "${{ inputs.ubports_channel }}" > "$INITRAMFS_SRC/etc/a045f-initramfs.conf"
+            printf "/dev/block/by-name/system /system ext4 ro 0 0\n/dev/block/by-name/vendor /vendor ext4 ro 0 0\n/dev/block/by-name/odm /odm ext4 ro 0 0\n/dev/block/by-name/product /product ext4 ro 0 0\n/dev/block/by-name/system_ext /system_ext ext4 ro 0 0\n" > "$INITRAMFS_SRC/etc/fstab.a045f"
+
+            if [ -d "$GITHUB_WORKSPACE/kernel_out/modules/lib/modules" ]; then
+              cp -r "$GITHUB_WORKSPACE/kernel_out/modules/lib/modules"/* "$INITRAMFS_SRC/lib/modules/" 2>/dev/null || true
+            fi
+
+            (cd "$INITRAMFS_SRC" && find . -print0 | cpio --null -o -H newc 2>/dev/null | gzip -9 > "$RAMDISK_FILE")
+          fi
+
+          test -s "$RAMDISK_FILE"
+          cp "$RAMDISK_FILE" "$BOOTIMG_WORK/initramfs.cpio.gz"
+          cp "$RAMDISK_FILE" "$OUT_DIR/initramfs.img"
+          cp "$RAMDISK_FILE" "$DEV_OUT/initramfs.img"
 
           DTB_PATH=""
           DTB_ARG=()
@@ -179,7 +218,6 @@ jobs:
           if compgen -G "$GITHUB_WORKSPACE/kernel_out/*.dtbo" > /dev/null; then
             cat "$GITHUB_WORKSPACE/kernel_out"/*.dtbo > "$BOOTIMG_WORK/dtbo.img"
             if [ -s "$BOOTIMG_WORK/dtbo.img" ]; then
-              DTB_PATH_EXISTS=1
               DTBO_PATH="$BOOTIMG_WORK/dtbo.img"
               DTBO_ARG=(--recovery_dtbo "$DTBO_PATH")
             fi
@@ -210,22 +248,36 @@ jobs:
           fi
 
           test -s "$BOOTIMG_WORK/boot.img"
-          cp "$BOOTIMG_WORK/boot.img" "$GITHUB_WORKSPACE/export_out/a045f_ubports/boot.img"
-          cp "$BOOTIMG_WORK/boot.img" "$GITHUB_WORKSPACE/export_out/boot.img"
-          ls -lh "$BOOTIMG_WORK/boot.img" "$GITHUB_WORKSPACE/export_out/a045f_ubports/boot.img"
+          cp "$BOOTIMG_WORK/boot.img" "$DEV_OUT/boot.img"
+          cp "$BOOTIMG_WORK/boot.img" "$OUT_DIR/boot.img"
+          ls -lh "$BOOTIMG_WORK/boot.img" "$OUT_DIR/boot.img" "$OUT_DIR/initramfs.img"
 
-      - name: Build system, product, vendor_dlkm, super, and vbmeta images
+      - name: Build system, system_ext, product, vendor, vendor_dlkm, odm, super, and vbmeta images
         run: |
           IMG_WORK="$GITHUB_WORKSPACE/img_work"
           OUT_DIR="$GITHUB_WORKSPACE/export_out"
           DEV_OUT="$OUT_DIR/a045f_ubports"
-          mkdir -p "$IMG_WORK/fs/system" "$IMG_WORK/fs/product" "$IMG_WORK/fs/vendor_dlkm" "$OUT_DIR" "$DEV_OUT"
+          mkdir -p \
+            "$IMG_WORK/fs/system" \
+            "$IMG_WORK/fs/system_ext" \
+            "$IMG_WORK/fs/product" \
+            "$IMG_WORK/fs/vendor" \
+            "$IMG_WORK/fs/vendor_dlkm" \
+            "$IMG_WORK/fs/odm" \
+            "$OUT_DIR" "$DEV_OUT"
 
           echo "codename=a045f" > "$IMG_WORK/fs/system/build_a045f.prop"
           echo "channel=${{ inputs.ubports_channel }}" >> "$IMG_WORK/fs/system/build_a045f.prop"
           cp -r "$GITHUB_WORKSPACE/ubports_work/ubuntu-touch" "$IMG_WORK/fs/system/ubuntu-touch-ref" 2>/dev/null || true
 
+          echo "ro.system_ext.a045f.build=1" > "$IMG_WORK/fs/system_ext/a045f_system_ext.prop"
           echo "ro.product.a045f.model=SM-A045F" > "$IMG_WORK/fs/product/a045f_product.prop"
+          echo "ro.hardware.a045f=mt6765" > "$IMG_WORK/fs/vendor/a045f_vendor.prop"
+          echo "ro.odm.a045f.sku=SM-A045F" > "$IMG_WORK/fs/odm/a045f_odm.prop"
+
+          if [ -d "$GITHUB_WORKSPACE/a04_trees/vendor" ]; then
+            cp -r "$GITHUB_WORKSPACE/a04_trees/vendor" "$IMG_WORK/fs/vendor/a04_vendor_tree" 2>/dev/null || true
+          fi
 
           if [ -d "$GITHUB_WORKSPACE/kernel_out/modules/lib/modules" ]; then
             cp -r "$GITHUB_WORKSPACE/kernel_out/modules/lib/modules" "$IMG_WORK/fs/vendor_dlkm/"
@@ -242,14 +294,20 @@ jobs:
           }
 
           make_ext4_img "$IMG_WORK/fs/system" "$IMG_WORK/system.img" 128
+          make_ext4_img "$IMG_WORK/fs/system_ext" "$IMG_WORK/system_ext.img" 64
           make_ext4_img "$IMG_WORK/fs/product" "$IMG_WORK/product.img" 64
+          make_ext4_img "$IMG_WORK/fs/vendor" "$IMG_WORK/vendor.img" 128
           make_ext4_img "$IMG_WORK/fs/vendor_dlkm" "$IMG_WORK/vendor_dlkm.img" 64
+          make_ext4_img "$IMG_WORK/fs/odm" "$IMG_WORK/odm.img" 32
 
           LPMAKE_BIN=$(command -v lpmake || find / -name "lpmake" -type f -executable 2>/dev/null | head -n 1 || true)
           if [ -n "$LPMAKE_BIN" ]; then
             SYS_SZ=$(stat -c%s "$IMG_WORK/system.img")
+            SYSE_SZ=$(stat -c%s "$IMG_WORK/system_ext.img")
             PRD_SZ=$(stat -c%s "$IMG_WORK/product.img")
+            VND_SZ=$(stat -c%s "$IMG_WORK/vendor.img")
             VDL_SZ=$(stat -c%s "$IMG_WORK/vendor_dlkm.img")
+            ODM_SZ=$(stat -c%s "$IMG_WORK/odm.img")
             SUPER_SIZE=1073741824
             "$LPMAKE_BIN" \
               --metadata-size 65536 \
@@ -259,14 +317,20 @@ jobs:
               --group "main:$SUPER_SIZE" \
               --partition "system_a:readonly:${SYS_SZ}:main" \
               --image "system_a=$IMG_WORK/system.img" \
+              --partition "system_ext_a:readonly:${SYSE_SZ}:main" \
+              --image "system_ext_a=$IMG_WORK/system_ext.img" \
               --partition "product_a:readonly:${PRD_SZ}:main" \
               --image "product_a=$IMG_WORK/product.img" \
+              --partition "vendor_a:readonly:${VND_SZ}:main" \
+              --image "vendor_a=$IMG_WORK/vendor.img" \
               --partition "vendor_dlkm_a:readonly:${VDL_SZ}:main" \
               --image "vendor_dlkm_a=$IMG_WORK/vendor_dlkm.img" \
+              --partition "odm_a:readonly:${ODM_SZ}:main" \
+              --image "odm_a=$IMG_WORK/odm.img" \
               --output "$IMG_WORK/super.img"
           else
-            echo "lpmake not found on host; creating placeholder super image container"
-            cat "$IMG_WORK/system.img" "$IMG_WORK/product.img" "$IMG_WORK/vendor_dlkm.img" > "$IMG_WORK/super.img"
+            echo "lpmake not found on host; creating combined super image container"
+            cat "$IMG_WORK/system.img" "$IMG_WORK/system_ext.img" "$IMG_WORK/product.img" "$IMG_WORK/vendor.img" "$IMG_WORK/vendor_dlkm.img" "$IMG_WORK/odm.img" > "$IMG_WORK/super.img"
           fi
           test -s "$IMG_WORK/super.img"
 
@@ -286,7 +350,7 @@ jobs:
           test -s "$IMG_WORK/vbmeta.img"
           test -s "$IMG_WORK/vbmeta_system.img"
 
-          for img in system.img product.img vendor_dlkm.img super.img vbmeta.img vbmeta_system.img; do
+          for img in system.img system_ext.img product.img vendor.img vendor_dlkm.img odm.img super.img vbmeta.img vbmeta_system.img; do
             cp "$IMG_WORK/$img" "$OUT_DIR/$img"
             cp "$IMG_WORK/$img" "$DEV_OUT/$img"
           done
