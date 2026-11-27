@@ -15,6 +15,10 @@ on:
         description: "Ubuntu Touch release/channel branch or tag"
         required: true
         default: "main"
+      rootfs_url:
+        description: "Direct URL to Ubuntu Touch arm64 rootfs archive (.tar.gz / .tar.xz / .tar)"
+        required: false
+        default: ""
       build_installer:
         description: "Build ubports-installer from source (true/false)"
         required: true
@@ -93,25 +97,70 @@ jobs:
           DEV_OUT="$OUT_DIR/a045f_ubports"
           mkdir -p "$ROOTFS_WORK/extracted" "$OUT_DIR" "$DEV_OUT"
 
+          TMP_ARCHIVE="$ROOTFS_WORK/downloaded_rootfs.bin"
           ROOTFS_ARCHIVE="$ROOTFS_WORK/ubuntu-touch-arm64-rootfs.tar.gz"
+          MIN_BYTES=1048576
           DOWNLOADED=0
+          CUSTOM_URL="${{ inputs.rootfs_url }}"
 
-          CANDIDATE_URLS=(
+          CANDIDATE_URLS=()
+          if [ -n "$CUSTOM_URL" ]; then
+            CANDIDATE_URLS+=("$CUSTOM_URL")
+          fi
+          CANDIDATE_URLS+=(
             "https://cdimage.ubports.com/ubuntu-touch/20.04/arm64/rootfs.tar.gz"
             "https://cdimage.ubports.com/ubuntu-touch/focal/arm64/rootfs.tar.gz"
             "https://ci-images.ubports.com/ubuntu-touch/focal/arm64/rootfs.tar.gz"
           )
 
+          verify_rootfs_archive() {
+            local file_path="$1"
+            if [ ! -s "$file_path" ]; then
+              echo "Archive is missing or empty"
+              return 1
+            fi
+            local sz_bytes sz_mb
+            sz_bytes=$(stat -c%s "$file_path" 2>/dev/null || echo 0)
+            sz_mb=$(awk "BEGIN {printf \"%.2f\", $sz_bytes / 1048576}")
+            echo "Actual downloaded size: ${sz_bytes} bytes (${sz_mb} MB)"
+            file "$file_path" 2>/dev/null || true
+
+            if [ "$sz_bytes" -lt "$MIN_BYTES" ]; then
+              echo "Rejected archive: size (${sz_bytes} bytes) is smaller than minimum ${MIN_BYTES} bytes"
+              return 1
+            fi
+
+            if tar -tzf "$file_path" >/dev/null 2>&1; then
+              echo "Verified valid gzip tar archive"
+              return 0
+            elif tar -tJf "$file_path" >/dev/null 2>&1; then
+              echo "Verified valid xz tar archive; converting to .tar.gz"
+              local tmp_gz="$ROOTFS_WORK/converted_rootfs.tar.gz"
+              xz -dc "$file_path" | gzip -9 > "$tmp_gz" && mv "$tmp_gz" "$file_path"
+              return 0
+            elif tar -tf "$file_path" >/dev/null 2>&1; then
+              echo "Verified valid uncompressed tar archive; compressing to .tar.gz"
+              local tmp_gz="$ROOTFS_WORK/converted_rootfs.tar.gz"
+              gzip -9 < "$file_path" > "$tmp_gz" && mv "$tmp_gz" "$file_path"
+              return 0
+            else
+              echo "Rejected file: not a valid tar archive"
+              return 1
+            fi
+          }
+
           for url in "${CANDIDATE_URLS[@]}"; do
+            rm -f "$TMP_ARCHIVE"
             echo "Trying rootfs URL: $url"
-            if curl -fSL --connect-timeout 15 --max-time 300 --retry 3 "$url" -o "$ROOTFS_ARCHIVE" && [ -s "$ROOTFS_ARCHIVE" ]; then
-              if tar -tzf "$ROOTFS_ARCHIVE" >/dev/null 2>&1; then
+            if curl -fSL --connect-timeout 20 --max-time 600 --retry 3 "$url" -o "$TMP_ARCHIVE"; then
+              if verify_rootfs_archive "$TMP_ARCHIVE"; then
+                mv "$TMP_ARCHIVE" "$ROOTFS_ARCHIVE"
                 DOWNLOADED=1
-                echo "Downloaded valid rootfs archive from: $url"
+                echo "Accepted valid rootfs archive from: $url"
                 break
-              else
-                rm -f "$ROOTFS_ARCHIVE"
               fi
+            else
+              echo "Download failed for URL: $url"
             fi
           done
 
@@ -120,7 +169,8 @@ jobs:
             cp "$ROOTFS_ARCHIVE" "$OUT_DIR/ubuntu-touch-arm64-rootfs.tar.gz"
             cp "$ROOTFS_ARCHIVE" "$DEV_OUT/ubuntu-touch-arm64-rootfs.tar.gz"
           else
-            echo "Warning: Could not download external rootfs archive; creating minimal rootfs structure"
+            rm -f "$TMP_ARCHIVE"
+            echo "Warning: No valid rootfs archive (>=1MB) downloaded; creating minimal rootfs placeholder"
             mkdir -p "$ROOTFS_WORK/extracted"/{bin,sbin,etc,usr,var,lib,dev,proc,sys,tmp,run,home,root}
             printf "Ubuntu Touch rootfs placeholder (a045f, arm64)\n" > "$ROOTFS_WORK/extracted/etc/os-release"
             tar -czf "$ROOTFS_ARCHIVE" -C "$ROOTFS_WORK/extracted" .
@@ -128,6 +178,8 @@ jobs:
             cp "$ROOTFS_ARCHIVE" "$DEV_OUT/ubuntu-touch-arm64-rootfs.tar.gz"
           fi
 
+          FINAL_SZ=$(stat -c%s "$OUT_DIR/ubuntu-touch-arm64-rootfs.tar.gz" 2>/dev/null || echo 0)
+          echo "Final exported rootfs size: ${FINAL_SZ} bytes"
           ls -lh "$ROOTFS_ARCHIVE" "$OUT_DIR/ubuntu-touch-arm64-rootfs.tar.gz"
           ls -la "$ROOTFS_WORK/extracted" | head -n 25
 
