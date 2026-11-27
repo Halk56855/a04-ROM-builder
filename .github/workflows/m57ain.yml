@@ -178,6 +178,18 @@ jobs:
           fi
           FLAVOR="a045f"
 
+          DTB_NAME=""
+          if [ -f "$GITHUB_WORKSPACE/kernel_out/mt6765_a04_eur_open_00.dtb" ]; then
+            DTB_NAME="mt6765_a04_eur_open_00"
+          else
+            FIRST_DTB=$(ls -1 "$GITHUB_WORKSPACE/kernel_out"/*.dtb 2>/dev/null | head -n 1 || true)
+            if [ -n "$FIRST_DTB" ]; then
+              DTB_NAME=$(basename "$FIRST_DTB" .dtb)
+            else
+              DTB_NAME="mt6765"
+            fi
+          fi
+
           mkdir -p "$KRN_DIR/src_files/lib/modules/$KVER/kernel"
           depmod -b "$KRN_DIR/src_files" "$KVER" 2>/dev/null || true
           if [ ! -f "$KRN_DIR/src_files/lib/modules/$KVER/modules.dep" ]; then
@@ -207,6 +219,7 @@ jobs:
           deviceinfo_flash_methods="heimdall"
           deviceinfo_generate_bootimg="true"
           deviceinfo_header_version="2"
+          deviceinfo_dtb="$DTB_NAME"
           deviceinfo_flash_pagesize="$PAGESIZE"
           deviceinfo_flash_offset_base="$BASE_ADDR"
           deviceinfo_kernel_cmdline="$CMDLINE"
