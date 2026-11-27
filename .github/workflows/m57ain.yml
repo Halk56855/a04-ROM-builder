@@ -241,17 +241,17 @@ jobs:
 
           package() {
               mkdir -p "\$pkgdir/boot" "\$pkgdir/lib/modules"
-              cp "$startdir/src_files/vmlinuz" "\$pkgdir/boot/vmlinuz-${KVER}"
-              cp "$startdir/src_files"/*.dtb "\$pkgdir/boot/" 2>/dev/null || true
-              cp "$startdir/src_files"/*.dtbo "\$pkgdir/boot/" 2>/dev/null || true
-              if [ -d "$startdir/src_files/lib/modules" ] && [ "\$(ls -A "$startdir/src_files/lib/modules" 2>/dev/null)" ]; then
-                  cp -r "$startdir/src_files/lib/modules"/* "\$pkgdir/lib/modules/" 2>/dev/null || true
+              cp "$KRN_DIR/src_files/vmlinuz" "\$pkgdir/boot/vmlinuz-${KVER}"
+              cp "$KRN_DIR/src_files"/*.dtb "\$pkgdir/boot/" 2>/dev/null || true
+              cp "$KRN_DIR/src_files"/*.dtbo "\$pkgdir/boot/" 2>/dev/null || true
+              if [ -d "$KRN_DIR/src_files/lib/modules" ] && [ "\$(ls -A "$KRN_DIR/src_files/lib/modules" 2>/dev/null)" ]; then
+                  cp -r "$KRN_DIR/src_files/lib/modules"/* "\$pkgdir/lib/modules/" 2>/dev/null || true
               fi
           }
           EOF
 
           echo "=== Verifying KRN_DIR/APKBUILD ==="
-          grep -n "startdir" "$KRN_DIR/APKBUILD"
+          cat "$KRN_DIR/APKBUILD"
 
       - name: Configure pmbootstrap and build all images
         run: |
