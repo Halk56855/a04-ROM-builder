@@ -16,7 +16,7 @@ on:
         required: true
         default: "main"
       rootfs_url:
-        description: "Direct URL to Ubuntu Touch arm64 rootfs archive (.tar.gz / .tar.xz / .tar)"
+        description: "Direct or GitHub URL to arm64 rootfs archive (.tar.gz / .tar.xz / .tar)"
         required: false
         default: ""
       build_installer:
@@ -120,11 +120,17 @@ jobs:
           ROOTFS_ARCHIVE="$ROOTFS_WORK/ubuntu-touch-arm64-rootfs.tar.gz"
           MIN_BYTES=1048576
           DOWNLOADED=0
-          CUSTOM_URL="${{ inputs.rootfs_url }}"
+          RAW_INPUT_URL="${{ inputs.rootfs_url }}"
+          NORMALIZED_URL=""
+
+          if [ -n "$RAW_INPUT_URL" ]; then
+            NORMALIZED_URL=$(printf '%s' "$RAW_INPUT_URL" | sed -E 's#^(https://github\.com/[^/]+/[^/]+)/blob/#\1/raw/#')
+            echo "Normalized rootfs URL: $NORMALIZED_URL"
+          fi
 
           CANDIDATE_URLS=()
-          if [ -n "$CUSTOM_URL" ]; then
-            CANDIDATE_URLS+=("$CUSTOM_URL")
+          if [ -n "$NORMALIZED_URL" ]; then
+            CANDIDATE_URLS+=("$NORMALIZED_URL")
           fi
           CANDIDATE_URLS+=(
             "https://cdimage.ubports.com/ubuntu-touch/20.04/arm64/rootfs.tar.gz"
