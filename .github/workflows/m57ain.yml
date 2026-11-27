@@ -252,7 +252,15 @@ jobs:
 
           run_pmb build --force linux-samsung-a045f
           run_pmb build --force device-samsung-a045f
-          run_pmb install
+
+          if ! printf "1234\n" | pmbootstrap "${PMB_ARGS[@]}" install; then
+            echo "=== pmbootstrap install failed ==="
+            if [ -f "$GITHUB_WORKSPACE/pm_work/log.txt" ]; then
+              tail -n 80 "$GITHUB_WORKSPACE/pm_work/log.txt"
+            fi
+            exit 1
+          fi
+
           run_pmb export --odin "$GITHUB_WORKSPACE/export_out" || run_pmb export "$GITHUB_WORKSPACE/export_out"
 
           cp -r "$GITHUB_WORKSPACE/kernel_out" "$GITHUB_WORKSPACE/export_out/raw_kernel"
