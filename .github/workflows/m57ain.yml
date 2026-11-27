@@ -177,7 +177,9 @@ jobs:
           deviceinfo_kernel_cmdline="$CMDLINE"
           EOF
 
-          cat <<'EOF' > "$DEV_DIR/APKBUILD"
+          SHA512_DEVINFO=$(sha512sum "$DEV_DIR/deviceinfo" | awk '{print $1}')
+
+          cat <<EOF > "$DEV_DIR/APKBUILD"
           pkgname=device-samsung-a045f
           pkgver=1
           pkgrel=0
@@ -190,12 +192,16 @@ jobs:
           source="deviceinfo"
 
           build() {
-              devicepkg_build "$startdir" "$pkgname"
+              devicepkg_build "\$startdir" "\$pkgname"
           }
 
           package() {
-              devicepkg_package "$startdir" "$pkgname"
+              devicepkg_package "\$startdir" "\$pkgname"
           }
+
+          sha512sums="
+          ${SHA512_DEVINFO}  deviceinfo
+          "
           EOF
 
           cat <<'EOF' > "$KRN_DIR/APKBUILD"
@@ -220,9 +226,6 @@ jobs:
               fi
           }
           EOF
-
-          pmbootstrap -p "$PMAPORTS_DIR" -w "$GITHUB_WORKSPACE/pm_work" checksum device-samsung-a045f || true
-          pmbootstrap -p "$PMAPORTS_DIR" -w "$GITHUB_WORKSPACE/pm_work" checksum linux-samsung-a045f || true
 
       - name: Configure pmbootstrap and build all images
         run: |
