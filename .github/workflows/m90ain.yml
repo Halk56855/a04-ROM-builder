@@ -1,0 +1,195 @@
+name: Build Ubuntu Touch & UBports Tooling for SM-A045F
+
+on:
+  workflow_dispatch:
+    inputs:
+      defconfig_name:
+        description: "Primary defconfig (a04_00_defconfig or a04_defconfig)"
+        required: true
+        default: "a04_00_defconfig"
+      fallback_defconfig:
+        description: "Fallback defconfig if primary fails"
+        required: true
+        default: "a04_defconfig"
+      ubports_channel:
+        description: "Ubuntu Touch release/channel branch or tag"
+        required: true
+        default: "main"
+      build_installer:
+        description: "Build ubports-installer from source (true/false)"
+        required: true
+        default: "true"
+
+jobs:
+  build-ubports-a045f:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git python3 python3-pip python3-venv openssl kpartx udev bc bison flex \
+            libssl-dev libncurses-dev build-essential device-tree-compiler \
+            android-sdk-libsparse-utils wget tar xz-utils cpio zip unzip file \
+            nodejs npm jq curl ca-certificates
+
+      - name: Download GCC & Clang Toolchain
+        run: |
+          rm -rf "$GITHUB_WORKSPACE/toolchain"
+          mkdir -p "$GITHUB_WORKSPACE/toolchain/gcc" "$GITHUB_WORKSPACE/toolchain/clang"
+
+          cd "$GITHUB_WORKSPACE/toolchain/gcc"
+          wget -q --show-progress --retry-connrefused --waitretry=2 --read-timeout=30 -t 5 \
+            "https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz" \
+            -O gcc.tar.xz || \
+          wget -q --show-progress --retry-connrefused --waitretry=2 --read-timeout=30 -t 5 \
+            "https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz" \
+            -O gcc.tar.xz
+          tar -xf gcc.tar.xz -C ./
+          rm -f gcc.tar.xz
+
+          cd "$GITHUB_WORKSPACE/toolchain/clang"
+          wget -q --show-progress --retry-connrefused --waitretry=2 --read-timeout=30 -t 5 \
+            "https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/clang-r383902.tar.gz" \
+            -O clang.tar.gz
+          tar -xzf clang.tar.gz -C ./
+          rm -f clang.tar.gz
+
+          echo "=== Verifying toolchains ==="
+          find "$GITHUB_WORKSPACE/toolchain/gcc" -name "aarch64-none-linux-gnu-gcc" -type f -executable
+          find "$GITHUB_WORKSPACE/toolchain/clang" -name "clang" -type f -executable
+
+          cd "$GITHUB_WORKSPACE"
+
+      - name: Clone UBports repos and A04 trees
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/ubports_work" "$GITHUB_WORKSPACE/a04_trees"
+
+          git clone --depth=1 https://github.com/ubports/ubports-installer.git \
+            "$GITHUB_WORKSPACE/ubports_work/ubports-installer"
+          git clone --depth=1 https://github.com/ubports/installer-configs.git \
+            "$GITHUB_WORKSPACE/ubports_work/installer-configs"
+          git clone --depth=1 --branch "${{ inputs.ubports_channel }}" \
+            https://gitlab.com/ubports/development/ubuntu-touch.git \
+            "$GITHUB_WORKSPACE/ubports_work/ubuntu-touch" || \
+          git clone --depth=1 \
+            https://gitlab.com/ubports/development/ubuntu-touch.git \
+            "$GITHUB_WORKSPACE/ubports_work/ubuntu-touch"
+
+          git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_device_samsung_a04.git \
+            "$GITHUB_WORKSPACE/a04_trees/device"
+          git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_vendor_samsung_a04.git \
+            "$GITHUB_WORKSPACE/a04_trees/vendor"
+          git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_kernel_samsung_a04.git \
+            "$GITHUB_WORKSPACE/a04_trees/kernel"
+
+          ls -la "$GITHUB_WORKSPACE/ubports_work"
+
+      - name: Build SM-A045F Kernel with Clang & GCC
+        run: |
+          GCC_BIN_DIR=$(dirname "$(find "$GITHUB_WORKSPACE/toolchain/gcc" -name "aarch64-none-linux-gnu-gcc" -type f -executable | head -n 1)")
+          CLANG_BIN_DIR=$(dirname "$(find "$GITHUB_WORKSPACE/toolchain/clang" -name "clang" -type f -executable | head -n 1)")
+
+          if [ -z "$GCC_BIN_DIR" ] || [ -z "$CLANG_BIN_DIR" ]; then
+            echo "ERROR: Missing GCC or Clang binary!"
+            exit 1
+          fi
+
+          export PATH="$CLANG_BIN_DIR:$GCC_BIN_DIR:$PATH"
+          clang --version | head -n 2
+          aarch64-none-linux-gnu-gcc --version | head -n 2
+
+          mkdir -p "$GITHUB_WORKSPACE/kernel_out/modules"
+          cd "$GITHUB_WORKSPACE/a04_trees/kernel"
+          rm -rf out
+
+          MAKE_COMMON=(
+            -j$(nproc)
+            O=out
+            ARCH=arm64
+            CC=clang
+            CLANG_TRIPLE=aarch64-linux-gnu-
+            CROSS_COMPILE=aarch64-none-linux-gnu-
+          )
+
+          if ! make "${MAKE_COMMON[@]}" "${{ inputs.defconfig_name }}"; then
+            echo "Primary defconfig (${{ inputs.defconfig_name }}) failed, trying ${{ inputs.fallback_defconfig }}..."
+            rm -rf out
+            make "${MAKE_COMMON[@]}" "${{ inputs.fallback_defconfig }}"
+          fi
+
+          if command -v ld.lld >/dev/null 2>&1; then
+            make "${MAKE_COMMON[@]}" LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip Image.gz dtbs modules || \
+            make "${MAKE_COMMON[@]}" Image.gz dtbs modules
+          else
+            make "${MAKE_COMMON[@]}" Image.gz dtbs modules
+          fi
+
+          make "${MAKE_COMMON[@]}" INSTALL_MOD_PATH="$GITHUB_WORKSPACE/kernel_out/modules" modules_install || true
+
+          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
+            cp out/arch/arm64/boot/Image.gz-dtb "$GITHUB_WORKSPACE/kernel_out/vmlinuz"
+          elif [ -f out/arch/arm64/boot/Image.gz ]; then
+            cp out/arch/arm64/boot/Image.gz "$GITHUB_WORKSPACE/kernel_out/vmlinuz"
+          else
+            cp out/arch/arm64/boot/Image "$GITHUB_WORKSPACE/kernel_out/vmlinuz"
+          fi
+
+          find out/arch/arm64/boot/dts -name "*.dtb" -exec cp {} "$GITHUB_WORKSPACE/kernel_out/" \; 2>/dev/null || true
+          find out/arch/arm64/boot/dts -name "*.dtbo" -exec cp {} "$GITHUB_WORKSPACE/kernel_out/" \; 2>/dev/null || true
+          ls -lh "$GITHUB_WORKSPACE/kernel_out"
+
+      - name: Prepare SM-A045F UBports manifest & device bundle
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/export_out/a045f_ubports"
+          CFG_DIR="$GITHUB_WORKSPACE/ubports_work/installer-configs"
+
+          find "$CFG_DIR" -maxdepth 4 -iname "*samsung*" -o -iname "*a04*" 2>/dev/null || true
+
+          PAGESIZE=$(grep -rn "BOARD_KERNEL_PAGESIZE" "$GITHUB_WORKSPACE/a04_trees/device/" 2>/dev/null | head -n 1 | grep -oE '[0-9]+' || true)
+          BASE_ADDR=$(grep -rn "BOARD_KERNEL_BASE" "$GITHUB_WORKSPACE/a04_trees/device/" 2>/dev/null | head -n 1 | grep -oE '0x[0-9a-fA-F]+' || true)
+          CMDLINE=$(grep -rn "BOARD_KERNEL_CMDLINE" "$GITHUB_WORKSPACE/a04_trees/device/" 2>/dev/null | head -n 1 | sed -E 's/.*:= *//' | tr -d '"' || true)
+
+          : "${PAGESIZE:=2048}"
+          : "${BASE_ADDR:=0x40078000}"
+          : "${CMDLINE:=bootopt=64S3,32N2,64N2}"
+
+          cat <<EOF > "$GITHUB_WORKSPACE/export_out/a045f_ubports/a045f-device-spec.json"
+          {
+            "codename": "a045f",
+            "model": "SM-A045F",
+            "name": "Samsung Galaxy A04",
+            "architecture": "arm64",
+            "kernel": {
+              "pagesize": "$PAGESIZE",
+              "base_address": "$BASE_ADDR",
+              "cmdline": "$CMDLINE"
+            },
+            "ubports_channel": "${{ inputs.ubports_channel }}"
+          }
+          EOF
+
+          cp -r "$GITHUB_WORKSPACE/kernel_out" "$GITHUB_WORKSPACE/export_out/a045f_ubports/kernel"
+          cp -r "$CFG_DIR" "$GITHUB_WORKSPACE/export_out/a045f_ubports/installer-configs"
+          find "$GITHUB_WORKSPACE/a04_trees" -maxdepth 4 \( -iname "*dtbo*.img" -o -iname "*vbmeta*.img" \) -exec cp {} "$GITHUB_WORKSPACE/export_out/a045f_ubports/" \; 2>/dev/null || true
+
+      - name: Build ubports-installer (optional)
+        if: ${{ inputs.build_installer == 'true' }}
+        run: |
+          cd "$GITHUB_WORKSPACE/ubports_work/ubports-installer"
+          if [ -f package.json ]; then
+            npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+            if npm run | grep -q "build"; then
+              npm run build || true
+            fi
+          fi
+          mkdir -p "$GITHUB_WORKSPACE/export_out/ubports-installer"
+          find . -maxdepth 3 \( -path "./dist*" -o -path "./build*" \) -exec cp -r {} "$GITHUB_WORKSPACE/export_out/ubports-installer/" \; 2>/dev/null || true
+          ls -lh "$GITHUB_WORKSPACE/export_out"
+
+      - name: Upload UBports build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sm-a045f-ubports-build
+          path: ${{ github.workspace }}/export_out/**
+          retention-days: 7
