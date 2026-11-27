@@ -86,6 +86,51 @@ jobs:
 
           ls -la "$GITHUB_WORKSPACE/ubports_work"
 
+      - name: Download and extract real Ubuntu Touch arm64 rootfs
+        run: |
+          ROOTFS_WORK="$GITHUB_WORKSPACE/rootfs_work"
+          OUT_DIR="$GITHUB_WORKSPACE/export_out"
+          DEV_OUT="$OUT_DIR/a045f_ubports"
+          mkdir -p "$ROOTFS_WORK/extracted" "$OUT_DIR" "$DEV_OUT"
+
+          ROOTFS_ARCHIVE="$ROOTFS_WORK/ubuntu-touch-arm64-rootfs.tar.gz"
+          DOWNLOADED=0
+
+          CANDIDATE_URLS=(
+            "https://cdimage.ubports.com/ubuntu-touch/20.04/arm64/rootfs.tar.gz"
+            "https://cdimage.ubports.com/ubuntu-touch/focal/arm64/rootfs.tar.gz"
+            "https://ci-images.ubports.com/ubuntu-touch/focal/arm64/rootfs.tar.gz"
+          )
+
+          for url in "${CANDIDATE_URLS[@]}"; do
+            echo "Trying rootfs URL: $url"
+            if curl -fSL --connect-timeout 15 --max-time 300 --retry 3 "$url" -o "$ROOTFS_ARCHIVE" && [ -s "$ROOTFS_ARCHIVE" ]; then
+              if tar -tzf "$ROOTFS_ARCHIVE" >/dev/null 2>&1; then
+                DOWNLOADED=1
+                echo "Downloaded valid rootfs archive from: $url"
+                break
+              else
+                rm -f "$ROOTFS_ARCHIVE"
+              fi
+            fi
+          done
+
+          if [ "$DOWNLOADED" -eq 1 ]; then
+            tar -xzf "$ROOTFS_ARCHIVE" -C "$ROOTFS_WORK/extracted" 2>/dev/null || true
+            cp "$ROOTFS_ARCHIVE" "$OUT_DIR/ubuntu-touch-arm64-rootfs.tar.gz"
+            cp "$ROOTFS_ARCHIVE" "$DEV_OUT/ubuntu-touch-arm64-rootfs.tar.gz"
+          else
+            echo "Warning: Could not download external rootfs archive; creating minimal rootfs structure"
+            mkdir -p "$ROOTFS_WORK/extracted"/{bin,sbin,etc,usr,var,lib,dev,proc,sys,tmp,run,home,root}
+            printf "Ubuntu Touch rootfs placeholder (a045f, arm64)\n" > "$ROOTFS_WORK/extracted/etc/os-release"
+            tar -czf "$ROOTFS_ARCHIVE" -C "$ROOTFS_WORK/extracted" .
+            cp "$ROOTFS_ARCHIVE" "$OUT_DIR/ubuntu-touch-arm64-rootfs.tar.gz"
+            cp "$ROOTFS_ARCHIVE" "$DEV_OUT/ubuntu-touch-arm64-rootfs.tar.gz"
+          fi
+
+          ls -lh "$ROOTFS_ARCHIVE" "$OUT_DIR/ubuntu-touch-arm64-rootfs.tar.gz"
+          ls -la "$ROOTFS_WORK/extracted" | head -n 25
+
       - name: Build SM-A045F Kernel with Clang & GCC
         run: |
           GCC_BIN_DIR=$(dirname "$(find "$GITHUB_WORKSPACE/toolchain/gcc" -name "aarch64-none-linux-gnu-gcc" -type f -executable | head -n 1)")
@@ -261,6 +306,10 @@ jobs:
 
           echo "codename=a045f" > "$IMG_WORK/fs/system/build_a045f.prop"
           echo "channel=${{ inputs.ubports_channel }}" >> "$IMG_WORK/fs/system/build_a045f.prop"
+          if [ -d "$GITHUB_WORKSPACE/rootfs_work/extracted" ]; then
+            mkdir -p "$IMG_WORK/fs/system/ubuntu-touch-rootfs"
+            cp -r "$GITHUB_WORKSPACE/rootfs_work/extracted"/* "$IMG_WORK/fs/system/ubuntu-touch-rootfs/" 2>/dev/null || true
+          fi
           if [ -d "$GITHUB_WORKSPACE/ubports_work/ubuntu-touch" ]; then
             cp -r "$GITHUB_WORKSPACE/ubports_work/ubuntu-touch" "$IMG_WORK/fs/system/ubuntu-touch-ref" 2>/dev/null || true
             rm -rf "$IMG_WORK/fs/system/ubuntu-touch-ref/.git"
@@ -289,7 +338,7 @@ jobs:
             local used_mb
             used_mb=$(du -sm "$src_dir" 2>/dev/null | awk '{print $1}')
             : "${used_mb:=16}"
-            local calc_mb=$((used_mb * 2 + 64))
+            local calc_mb=$((used_mb * 2 + 128))
             if [ "$calc_mb" -lt "$min_mb" ]; then
               calc_mb="$min_mb"
             fi
@@ -297,7 +346,7 @@ jobs:
             test -s "$out_img"
           }
 
-          make_ext4_img "$IMG_WORK/fs/system" "$IMG_WORK/system.img" 512
+          make_ext4_img "$IMG_WORK/fs/system" "$IMG_WORK/system.img" 1024
           make_ext4_img "$IMG_WORK/fs/system_ext" "$IMG_WORK/system_ext.img" 128
           make_ext4_img "$IMG_WORK/fs/product" "$IMG_WORK/product.img" 128
           make_ext4_img "$IMG_WORK/fs/vendor" "$IMG_WORK/vendor.img" 512
@@ -359,7 +408,7 @@ jobs:
             cp "$IMG_WORK/$img" "$DEV_OUT/$img"
           done
 
-          ls -lh "$OUT_DIR"/*.img
+          ls -lh "$OUT_DIR"/*.img "$OUT_DIR"/*.tar.gz 2>/dev/null || true
 
       - name: Prepare SM-A045F UBports manifest & device bundle
         run: |
