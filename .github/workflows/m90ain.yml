@@ -170,21 +170,14 @@ jobs:
           EXTRACTED_RAMDISK=0
           if [ -n "$REF_BOOT" ] && [ -s "$REF_BOOT" ]; then
             echo "Found reference boot image: $REF_BOOT"
-            python3 -c 'import struct, sys, zlib; data = open(sys.argv[1],"rb").read(); idx = data.find(b"ANDROID!"); sys.exit(1) if idx == -1 else None; ksz, _, rsz, _, _, _, _, ps = struct.unpack_from("<8I", data, idx+8); ps = ps if ps else 2048; pad = lambda n: ((n + ps - 1)//ps)*ps; roff = idx + ps + pad(ksz); rdata = data[roff:roff+rsz]; open(sys.argv[2],"wb").write(rdata); sys.exit(0 if len(rdata) > 128 else 1)' "$REF_BOOT" "$RAMDISK_FILE" && EXTRACTED_RAMDISK=1 || EXTRACTED_RAMDISK=0
+            python3 -c 'import struct, sys; data = open(sys.argv[1],"rb").read(); idx = data.find(b"ANDROID!"); sys.exit(1) if idx == -1 else None; ksz, _, rsz, _, _, _, _, ps = struct.unpack_from("<8I", data, idx+8); ps = ps if ps else 2048; pad = lambda n: ((n + ps - 1)//ps)*ps; roff = idx + ps + pad(ksz); rdata = data[roff:roff+rsz]; open(sys.argv[2],"wb").write(rdata); sys.exit(0 if len(rdata) > 128 else 1)' "$REF_BOOT" "$RAMDISK_FILE" && EXTRACTED_RAMDISK=1 || EXTRACTED_RAMDISK=0
           fi
 
           if [ "$EXTRACTED_RAMDISK" -eq 0 ]; then
             echo "Building structured initramfs & ramdisk for SM-A045F (${{ inputs.ubports_channel }})"
             mkdir -p "$INITRAMFS_SRC"/{bin,sbin,etc,proc,sys,dev,mnt,system,system_ext,vendor,vendor_dlkm,odm,product,lib/modules}
 
-            cat <<'INITEOF' > "$INITRAMFS_SRC/init"
-#!/bin/sh
-mount -t proc proc /proc
-mount -t sysfs sysfs /sys
-mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
-echo "Booting SM-A045F initramfs..."
-exec /bin/sh
-INITEOF
+            printf '#!/bin/sh\nmount -t proc proc /proc\nmount -t sysfs sysfs /sys\nmount -t devtmpfs devtmpfs /dev 2>/dev/null || true\necho "Booting SM-A045F initramfs..."\nexec /bin/sh\n' > "$INITRAMFS_SRC/init"
             chmod 755 "$INITRAMFS_SRC/init"
             ln -sf /init "$INITRAMFS_SRC/sbin/init" 2>/dev/null || true
 
