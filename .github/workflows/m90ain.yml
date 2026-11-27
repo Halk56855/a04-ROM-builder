@@ -31,7 +31,7 @@ jobs:
             git python3 python3-pip python3-venv openssl kpartx udev bc bison flex \
             libssl-dev libncurses-dev build-essential device-tree-compiler \
             android-sdk-libsparse-utils wget tar xz-utils cpio zip unzip file \
-            nodejs npm jq curl ca-certificates
+            jq curl ca-certificates
 
       - name: Download GCC & Clang Toolchain
         run: |
@@ -173,9 +173,17 @@ jobs:
           cp -r "$CFG_DIR" "$GITHUB_WORKSPACE/export_out/a045f_ubports/installer-configs"
           find "$GITHUB_WORKSPACE/a04_trees" -maxdepth 4 \( -iname "*dtbo*.img" -o -iname "*vbmeta*.img" \) -exec cp {} "$GITHUB_WORKSPACE/export_out/a045f_ubports/" \; 2>/dev/null || true
 
+      - name: Setup Node.js 24
+        if: ${{ inputs.build_installer == 'true' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
       - name: Build ubports-installer (optional)
         if: ${{ inputs.build_installer == 'true' }}
         run: |
+          node -v
+          npm -v
           cd "$GITHUB_WORKSPACE/ubports_work/ubports-installer"
           if [ -f package.json ]; then
             npm ci --no-audit --no-fund || npm install --no-audit --no-fund
